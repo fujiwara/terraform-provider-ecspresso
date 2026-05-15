@@ -1,0 +1,36 @@
+version: 2
+before:
+  hooks:
+    - go mod download
+builds:
+  - env:
+      - CGO_ENABLED=0
+    main: ./
+    binary: '{{ .ProjectName }}_v{{ .Version }}'
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.Version=v{{ .Version }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+release:
+  use_existing_draft: true
+checksum:
+  name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"
+  algorithm: sha256
+archives:
+  - formats: [zip]
+    name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+snapshot:
+  version_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
