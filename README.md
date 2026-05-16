@@ -4,7 +4,7 @@ A Terraform provider that manages Amazon ECS services through [kayac/ecspresso](
 
 ## Status
 
-**Early development.** Phase 2 is in place: `Create` / `Read` / `Update` / `Delete` are wired to ecspresso v2 as a Go library. `tfstate_values` is accepted by the schema but not yet injected into ecspresso (that needs a small upstream change — Phase 4 in [docs/DESIGN.md](docs/DESIGN.md)).
+**Early development.** `Create` / `Read` / `Update` / `Delete` are wired to ecspresso v2 as a Go library and `tfstate_values` is fed into ecspresso's tfstate plugin via an override mechanism in [fujiwara/tfstate-lookup](https://github.com/fujiwara/tfstate-lookup). The override mechanism currently relies on local forks of `tfstate-lookup` and `ecspresso`; published-binary distribution waits on those changes landing upstream. See [docs/DESIGN.md](docs/DESIGN.md) for the full plan.
 
 ## Trying it locally (dev override)
 
@@ -39,7 +39,7 @@ terraform {
 provider "ecspresso" {}
 
 resource "ecspresso_service" "app" {
-  config_path = "./ecspresso.yml"
+  config_path = "${path.module}/ecspresso.yml"
 }
 ```
 
@@ -57,9 +57,9 @@ This provider runs ecspresso as a Go library inside Terraform, exposes the resul
 
 Concretely:
 
-- The **only** signals that trigger a Terraform-side redeploy are diffs to Terraform inputs the user wrote into the resource (notably `tfstate_values` and `envs`). When a Terraform-managed IAM Role ARN changes, ecspresso has to be re-run to pick it up — that is what this provider is for.
+- The **only** signal that triggers a Terraform-side redeploy is a diff in `tfstate_values`. When a Terraform-managed IAM Role ARN, target group ARN, etc. changes, ecspresso has to be re-run to pick it up — that is what this provider is for.
 - Changes to `taskdef.json` / `service_def.json` are **not** Terraform's concern. The provider does not hash the files, does not track them, and does not redeploy when they change. Application teams update those files and ship via `ecspresso deploy` CLI without involving Terraform.
-- The AWS-side task definition revision is read into the computed attributes on refresh, but is never compared against any Terraform input. A `terraform apply` after a hundred CLI deploys produces no spurious diff.
+- The AWS-side task definition revision is deliberately not surfaced as an attribute. It advances on every CLI deploy and Terraform cannot keep it authoritative, so exposing it would only invite stale references and spurious diffs.
 
 ## Planned usage
 
@@ -75,7 +75,7 @@ terraform {
 provider "ecspresso" {}
 
 resource "ecspresso_service" "app" {
-  config_path = "./ecspresso.yml"
+  config_path = "${path.module}/ecspresso.yml"
 
   # A diff in any of these values causes Terraform to re-run ecspresso deploy.
   # File contents of taskdef.json / service_def.json are intentionally NOT tracked.
@@ -103,8 +103,9 @@ Runs `ecspresso deploy` against the configured ECS service.
 
 | name | required | description |
 |------|----------|-------------|
-| `config_path` | yes | Path to `ecspresso.yml`. |
-| `tfstate_values` | no | Map injected into ecspresso's tfstate plugin when `from_provider: true` is set in the config. Keys are the tfstate addresses referenced from `ecspresso.yml`. A diff in this map is the primary signal that triggers a redeploy. |
+| `config_path` | yes | Path to `ecspresso.yml`. Relative paths are resolved against the working directory of the `terraform` process (where `terraform apply` is invoked), **not** the directory containing the `.tf` file. Prefer `"${path.module}/ecspresso.yml"` (or an absolute path) so the resource keeps working when the module is consumed from elsewhere or when `terraform -chdir=...` is used. Changing this forces a new resource. |
+| `tfstate_values` | no | Object whose keys are tfstate addresses at the resource level (e.g. `"aws_iam_role.task"`, `"output.foo"`). Each value may be any Terraform type — a whole resource attribute map, a list, a bool, or a scalar — and the corresponding `tfstate(...)` lookups in ecspresso's jsonnet/template (including nested ones like `tfstate('aws_iam_role.task.arn')`) are resolved against it. Overrides take precedence over the tfstate file the plugin loads from `path` / `url`, so this resolves the "state file is one apply behind" problem. A diff here is the primary signal that triggers a redeploy. |
+| `tfstate_func_prefix` | no | Identifies which tfstate plugin in `ecspresso.yml` receives the `tfstate_values` overrides, matched against the plugin's `func_prefix`. Defaults to `""` (the no-prefix / single-plugin case). Only needed when the ecspresso config declares multiple tfstate plugins. |
 | `destroy_action` | no | `delete` (default) scales the service to 0, drains tasks, then deletes. `ignore` removes the resource from Terraform state without touching AWS — useful when external dependencies (e.g. CodeDeploy deployment groups) make the destroy order tricky. |
 
 To force a redeploy without changing any input, use `ecspresso deploy --force-new-deployment` from the CLI. `terraform apply -replace=ecspresso_service.app` also works but performs destroy+create, which causes downtime — the CLI path is the safe one.
@@ -118,7 +119,21 @@ If `ecspresso.yml` references OS environment variables via `{{ env "FOO" }}` / `
 - `id` — `<cluster>/<service>`
 - `service_arn`, `service_name`
 - `cluster_arn`, `cluster_name`
-- `task_definition_arn`, `task_definition_family`, `task_definition_revision`
+
+Task-definition identity (`arn` / `family` / `revision`) and other AWS-managed details (desired count, launch type, …) are intentionally not exposed as attributes of this resource. They advance on every `ecspresso deploy` — including CLI deploys that Terraform is unaware of — so any value Terraform recorded would be stale almost immediately.
+
+When you need them inside Terraform, wire up `data "aws_ecs_service"` against this resource. The data source is re-read on every plan, so it reflects the live AWS state regardless of how many CLI deploys have happened since the last `terraform apply`:
+
+```hcl
+data "aws_ecs_service" "app" {
+  service_name = ecspresso_service.app.service_name
+  cluster_arn  = ecspresso_service.app.cluster_arn
+}
+
+# data.aws_ecs_service.app.task_definition, .desired_count, .launch_type, ...
+```
+
+The reference to `ecspresso_service.app` already creates an implicit dependency, so an explicit `depends_on` is not required — the data source will run after the ecspresso deploy.
 
 ## License
 
