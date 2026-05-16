@@ -7,30 +7,33 @@ package ecspressoapi
 import (
 	"context"
 	"errors"
-	"strconv"
 	"strings"
 
+	"github.com/fujiwara/tfstate-lookup/tfstate"
 	ecspresso "github.com/kayac/ecspresso/v2"
 )
 
 // ServiceInfo is the subset of ECS service attributes the provider exposes
-// as computed Terraform attributes.
+// as computed Terraform attributes. task_definition_* are intentionally
+// omitted: they advance on every ecspresso deploy (CLI or otherwise) and
+// Terraform cannot keep them authoritative.
 type ServiceInfo struct {
-	ServiceArn             string
-	ServiceName            string
-	ClusterArn             string
-	ClusterName            string
-	TaskDefinitionArn      string
-	TaskDefinitionFamily   string
-	TaskDefinitionRevision int64
+	ServiceArn  string
+	ServiceName string
+	ClusterArn  string
+	ClusterName string
 }
 
-// Deploy invokes ecspresso deploy and returns the post-deploy service info.
-func Deploy(ctx context.Context, configPath string) (*ServiceInfo, error) {
+// Deploy invokes ecspresso deploy and returns the post-deploy service
+// info. tfstateOverrides are applied to the tfstate plugin whose
+// func_prefix matches tfstateFuncPrefix ("" targets the default plugin).
+// A nil or empty map skips override application.
+func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) (*ServiceInfo, error) {
 	app, err := newApp(ctx, configPath)
 	if err != nil {
 		return nil, err
 	}
+	applyTFStateOverrides(app, tfstateFuncPrefix, tfstateOverrides)
 	if err := app.Deploy(ctx, ecspresso.DeployOption{
 		Wait:          true,
 		UpdateService: true,
@@ -40,7 +43,9 @@ func Deploy(ctx context.Context, configPath string) (*ServiceInfo, error) {
 	return describe(ctx, app)
 }
 
-// Describe returns the current service info without deploying.
+// Describe returns the current service info without deploying. tfstate
+// overrides are not required because DescribeService does not re-render
+// the task/service definition templates.
 func Describe(ctx context.Context, configPath string) (*ServiceInfo, error) {
 	app, err := newApp(ctx, configPath)
 	if err != nil {
@@ -51,15 +56,33 @@ func Describe(ctx context.Context, configPath string) (*ServiceInfo, error) {
 
 // Delete runs ecspresso delete with Force (skip prompt) and Terminate
 // (DeleteService force=true, i.e. scale-to-zero + drain + delete).
-func Delete(ctx context.Context, configPath string) error {
+// tfstateOverrides are forwarded so any plugin-rendered config the
+// delete path may read still resolves correctly.
+func Delete(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) error {
 	app, err := newApp(ctx, configPath)
 	if err != nil {
 		return err
 	}
+	applyTFStateOverrides(app, tfstateFuncPrefix, tfstateOverrides)
 	return app.Delete(ctx, ecspresso.DeleteOption{
 		Force:     true,
 		Terminate: true,
 	})
+}
+
+// applyTFStateOverrides pushes the given overrides into the tfstate
+// plugin identified by funcPrefix. No-op when overrides are empty or
+// when no matching tfstate plugin is configured (ecspresso.yml may
+// legitimately have no tfstate plugin at all).
+func applyTFStateOverrides(app *ecspresso.App, funcPrefix string, overrides map[string]any) {
+	if len(overrides) == 0 {
+		return
+	}
+	state, ok := app.PluginInstance("tfstate", funcPrefix).(*tfstate.TFState)
+	if !ok {
+		return
+	}
+	state.SetOverrides(overrides)
 }
 
 // IsNotFound reports whether err indicates the ECS service does not exist.
@@ -81,18 +104,12 @@ func describe(ctx context.Context, app *ecspresso.App) (*ServiceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	info := &ServiceInfo{
-		ServiceArn:        deref(sv.ServiceArn),
-		ServiceName:       deref(sv.ServiceName),
-		ClusterArn:        deref(sv.ClusterArn),
-		ClusterName:       arnLastSegment(deref(sv.ClusterArn)),
-		TaskDefinitionArn: deref(sv.TaskDefinition),
-	}
-	if family, rev, ok := parseTaskDefArn(info.TaskDefinitionArn); ok {
-		info.TaskDefinitionFamily = family
-		info.TaskDefinitionRevision = rev
-	}
-	return info, nil
+	return &ServiceInfo{
+		ServiceArn:  deref(sv.ServiceArn),
+		ServiceName: deref(sv.ServiceName),
+		ClusterArn:  deref(sv.ClusterArn),
+		ClusterName: arnLastSegment(deref(sv.ClusterArn)),
+	}, nil
 }
 
 func deref(s *string) string {
@@ -110,23 +127,4 @@ func arnLastSegment(arn string) string {
 		return arn[i+1:]
 	}
 	return arn
-}
-
-// parseTaskDefArn extracts family and revision from a task definition ARN of
-// the form "arn:aws:ecs:<region>:<account>:task-definition/<family>:<revision>".
-func parseTaskDefArn(arn string) (family string, revision int64, ok bool) {
-	slash := strings.LastIndex(arn, "/")
-	if slash < 0 {
-		return "", 0, false
-	}
-	tail := arn[slash+1:]
-	colon := strings.LastIndex(tail, ":")
-	if colon < 0 {
-		return "", 0, false
-	}
-	rev, err := strconv.ParseInt(tail[colon+1:], 10, 64)
-	if err != nil {
-		return "", 0, false
-	}
-	return tail[:colon], rev, true
 }

@@ -3,8 +3,10 @@ module github.com/fujiwara/terraform-provider-ecspresso
 go 1.25.0
 
 require (
+	github.com/fujiwara/tfstate-lookup v1.11.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
+	github.com/kayac/ecspresso/v2 v2.8.3
 )
 
 require (
@@ -82,7 +84,6 @@ require (
 	github.com/fujiwara/ecsta v0.8.2 // indirect
 	github.com/fujiwara/sloghandler v0.1.0 // indirect
 	github.com/fujiwara/ssm-lookup v0.1.1 // indirect
-	github.com/fujiwara/tfstate-lookup v1.11.0 // indirect
 	github.com/fujiwara/tracer v1.1.3 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
@@ -116,7 +117,6 @@ require (
 	github.com/hexops/gotextdiff v1.0.3 // indirect
 	github.com/itchyny/gojq v0.12.19 // indirect
 	github.com/itchyny/timefmt-go v0.1.8 // indirect
-	github.com/kayac/ecspresso/v2 v2.8.3 // indirect
 	github.com/kayac/go-config v0.7.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -172,3 +172,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/kayac/ecspresso/v2 => /home/fujiwara/src/github.com/kayac/ecspresso
+
+replace github.com/fujiwara/tfstate-lookup => /home/fujiwara/src/github.com/fujiwara/tfstate-lookup
