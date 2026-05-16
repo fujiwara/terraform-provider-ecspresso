@@ -4,7 +4,7 @@ A Terraform provider that manages Amazon ECS services through [kayac/ecspresso](
 
 ## Status
 
-**Early development.** `Create` / `Read` / `Update` / `Delete` are wired to ecspresso v2 as a Go library and `tfstate_values` is fed into ecspresso's tfstate plugin via an override mechanism in [fujiwara/tfstate-lookup](https://github.com/fujiwara/tfstate-lookup). The override mechanism currently relies on local forks of `tfstate-lookup` and `ecspresso`; published-binary distribution waits on those changes landing upstream. See [docs/DESIGN.md](docs/DESIGN.md) for the full plan.
+**Early development.** `Create` / `Read` / `Update` / `Delete` are wired to ecspresso v2 as a Go library, and `tfstate_values` is fed into ecspresso's tfstate plugin via the override mechanism added in [tfstate-lookup v1.12.0](https://github.com/fujiwara/tfstate-lookup/releases/tag/v1.12.0) and the plugin instance registry added in [ecspresso v2.8.4](https://github.com/kayac/ecspresso/releases/tag/v2.8.4). Both dependencies are pulled as released versions — no `go.mod` `replace` directives required. Published-binary distribution is the remaining piece; see [docs/DESIGN.md](docs/DESIGN.md) for the full plan.
 
 ## Trying it locally (dev override)
 
