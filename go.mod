@@ -6,7 +6,7 @@ require (
 	github.com/fujiwara/tfstate-lookup v1.12.0
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
-	github.com/kayac/ecspresso/v2 v2.8.4
+	github.com/kayac/ecspresso/v2 v2.8.5-0.20260517081322-c108cf9b3f88
 )
 
 require (

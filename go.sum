@@ -284,8 +284,8 @@ github.com/jhump/protoreflect v1.17.0 h1:qOEr613fac2lOuTgWN4tPAtLL7fUSbuJL5X5Xum
 github.com/jhump/protoreflect v1.17.0/go.mod h1:h9+vUUL38jiBzck8ck+6G/aeMX8Z4QUY/NiJPwPNi+8=
 github.com/jmespath/go-jmespath v0.4.0/go.mod h1:T8mJZnbsbmF+m6zOOFylbeCJqk5+pHWvzYPziyZiYoo=
 github.com/jmespath/go-jmespath/internal/testify v1.5.1/go.mod h1:L3OGu8Wl2/fWfCI6z80xFu9LTZmf1ZRjMHUOPmWr69U=
-github.com/kayac/ecspresso/v2 v2.8.4 h1:PIhToVrVK9MkTyWihwXVQKSxap/tDE78KQvQ4gOF8AA=
-github.com/kayac/ecspresso/v2 v2.8.4/go.mod h1:o/7efCW0W5/iFiKimA+dHXkac3qbIojVX5Czu3rPYHc=
+github.com/kayac/ecspresso/v2 v2.8.5-0.20260517081322-c108cf9b3f88 h1:eMheqZRixMwnL9P6NR4nhnQJDclFViBlwkgNKf/pYa4=
+github.com/kayac/ecspresso/v2 v2.8.5-0.20260517081322-c108cf9b3f88/go.mod h1:5F79Gt/QwNvODL9J50Q9ER4WcK6Oxm8SelhK+AQB/Ok=
 github.com/kayac/go-config v0.7.0 h1:BeONaFFq/ILFiEzkCMpKarsjcc3YBgJ7QKg39hXU+nk=
 github.com/kayac/go-config v0.7.0/go.mod h1:Nfkw4LZOh/7HGepftBvD2lKEpPyl1Vp89yA7gDJS5r0=
 github.com/keybase/go-keychain v0.0.1 h1:way+bWYa6lDppZoZcgMbYsvC7GxljxrskdNInRtuthU=
