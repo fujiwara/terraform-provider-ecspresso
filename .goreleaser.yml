@@ -19,15 +19,9 @@ builds:
       - linux
       - darwin
       - windows
-      - freebsd
     goarch:
       - amd64
       - arm64
-      - '386'
-      - arm
-    ignore:
-      - goos: darwin
-        goarch: '386'
 archives:
   - formats: [zip]
     name_template: '{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}'
