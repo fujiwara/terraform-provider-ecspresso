@@ -19,6 +19,10 @@ security group) inside the default VPC.
   `public.ecr.aws/nginx/nginx:latest` container.
 - `service_def.jsonnet` — Service definition; one task on Fargate in the
   first default-VPC subnet.
+- `oidc/main.tf` — Optional. Provisions the GitHub Actions OIDC
+  provider and the IAM role used by the GitHub Actions acceptance test
+  workflow. See `oidc/README.md`. Only needed if you intend to run the
+  test through `.github/workflows/acc-test.yml`.
 
 ## Run
 

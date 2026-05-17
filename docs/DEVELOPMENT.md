@@ -120,44 +120,23 @@ cleaned up even when the test fails.
 
 One-time setup:
 
-1. **AWS OIDC provider.** Register
-   `token.actions.githubusercontent.com` as an IAM OIDC provider in the
-   target account (audience `sts.amazonaws.com`).
-2. **IAM role.** Create a role the workflow can assume via OIDC. Trust
-   policy template (substitute `<account-id>` and the repo path):
+1. **AWS OIDC provider + IAM role.** Apply the Terraform stack under
+   [`examples/acceptance/oidc/`](../examples/acceptance/oidc/). It
+   creates the GitHub Actions OIDC provider and an IAM role with the
+   minimum ECS / IAM / EC2 permissions the bootstrap stack and the
+   acceptance test need. See that directory's README for the
+   "OIDC provider already exists" fallback.
 
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [{
-       "Effect": "Allow",
-       "Principal": {
-         "Federated": "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
-       },
-       "Action": "sts:AssumeRoleWithWebIdentity",
-       "Condition": {
-         "StringEquals": {
-           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-         },
-         "StringLike": {
-           "token.actions.githubusercontent.com:sub": "repo:fujiwara/terraform-provider-ecspresso:environment:acc-test"
-         }
-       }
-     }]
-   }
+   ```sh
+   cd examples/acceptance/oidc
+   terraform init && terraform apply
    ```
 
-   The role needs ECS / IAM (`PassRole` + CRUD on the role this stack
-   creates) / EC2 (VPC + security group lookup and CRUD) permissions
-   plus the managed-policy attach action to wire
-   `AmazonECSTaskExecutionRolePolicy` onto the task role. Scoping the
-   policy to the `ecspresso-provider-acc-test` cluster / role / SG
-   names is feasible.
-3. **`acc-test` environment.** On the GitHub repository, *Settings →
+2. **`acc-test` environment.** On the GitHub repository, *Settings →
    Environments → `acc-test`*. Under **Environment variables**, add
-   `AWS_ROLE_ARN` set to the role ARN above. The ARN is not a secret
-   (assume succeeds only via the OIDC trust relationship), so a
-   variable is enough — no environment secrets are required.
+   `AWS_ROLE_ARN` set to the `role_arn` output from step 1. The ARN is
+   not a secret (assume succeeds only via the OIDC trust relationship),
+   so a variable is enough — no environment secrets are required.
 
 After that, go to *Actions → acceptance test → Run workflow* on
 `main`, optionally override the region input, and the run boots the
