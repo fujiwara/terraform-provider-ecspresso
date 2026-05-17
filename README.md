@@ -125,7 +125,7 @@ To adopt an already-deployed service:
 2. Add the `ecspresso_service` resource to `.tf` with whatever `tfstate_values` etc. you want Terraform to manage.
 3. `terraform apply`.
 
-`ecspresso deploy` is idempotent — the first adoption-apply is at worst a no-op or the deploy that would have happened anyway. The service is never recreated. (For a strict "no deploy on first apply", render the ecspresso config so its diff against AWS is empty beforehand.)
+The first adoption-apply runs `ecspresso deploy`. The service is updated in place (not recreated), but a new task definition revision is registered even when there is no logical diff — the provider doesn't yet diff-and-skip.
 
 ## License
 
