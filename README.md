@@ -4,7 +4,7 @@ A Terraform provider that manages Amazon ECS services through [kayac/ecspresso](
 
 ## Status
 
-**Early development.** `Create` / `Read` / `Update` / `Delete` are wired to ecspresso v2 as a Go library, and `tfstate_values` is fed into ecspresso's tfstate plugin via the override mechanism added in [tfstate-lookup v1.12.0](https://github.com/fujiwara/tfstate-lookup/releases/tag/v1.12.0) and the plugin instance registry added in [ecspresso v2.8.4](https://github.com/kayac/ecspresso/releases/tag/v2.8.4). Both dependencies are pulled as released versions — no `go.mod` `replace` directives required. Published-binary distribution is the remaining piece; see [docs/DESIGN.md](docs/DESIGN.md) for the full plan.
+**Pre-release.** `Create` / `Read` / `Update` / `Delete` are wired to ecspresso v2 as a Go library. `tfstate_values` is fed into ecspresso's tfstate plugin via the override mechanism in [tfstate-lookup v1.12.0](https://github.com/fujiwara/tfstate-lookup/releases/tag/v1.12.0) and the plugin instance registry in ecspresso v2.8.4 (the `optional: true` tfstate flag depended on by the first-apply path is from the post-v2.8.4 commit currently pinned via Go pseudo-version). Release artifacts and the goreleaser configuration are aligned with the Terraform Registry publishing requirements — see [docs/DESIGN.md](docs/DESIGN.md) for the full plan and the "Releasing" section below for the publishing checklist.
 
 ## Trying it locally (dev override)
 
@@ -191,6 +191,24 @@ running `terraform apply`.
 
 (Reminder: the first-apply success itself depends on `optional: true` on the
 tfstate plugin — see "ecspresso.yml setup" above.)
+
+## Releasing
+
+The release pipeline (`.github/workflows/tagpr-release.yml`) drives [Songmu/tagpr](https://github.com/Songmu/tagpr) for tagging and [goreleaser](https://goreleaser.com/) for building, signing, and publishing artifacts in the layout required by the Terraform Registry:
+
+- Per-OS/arch zip archives: `terraform-provider-ecspresso_v{VERSION}_{OS}_{ARCH}.zip`
+- `terraform-provider-ecspresso_v{VERSION}_SHA256SUMS` and a detached `.sig` (GPG)
+- `terraform-provider-ecspresso_v{VERSION}_manifest.json` (sourced from `terraform-registry-manifest.json`)
+
+One-time setup before the first release:
+
+1. **GPG signing key.** Generate a key pair (no passphrase or with one — both supported), export the **public** key as ASCII-armored, and register that public key under your Terraform Registry account. The fingerprint must match what goreleaser will use to sign.
+2. **GitHub Secrets.** On the GitHub repository, add:
+   - `GPG_PRIVATE_KEY` — the ASCII-armored **private** key, exported with `gpg --armor --export-secret-keys $FINGERPRINT`.
+   - `PASSPHRASE` — passphrase for the key (set even if empty, to satisfy the action input).
+3. **Terraform Registry.** Sign in at [registry.terraform.io](https://registry.terraform.io/) with the GitHub account that owns this repository, click *Publish → Provider*, pick the repo, and confirm the namespace (`fujiwara/ecspresso`).
+
+After that, releases happen by merging a tagpr-generated PR into `main`; the workflow tags, builds signed artifacts, and publishes a GitHub Release. The Terraform Registry polls GitHub for new tags and picks the artifacts up automatically.
 
 ## License
 

@@ -6,6 +6,7 @@ builds:
   - env:
       - CGO_ENABLED=0
     main: ./
+    mod_timestamp: '{{ .CommitTimestamp }}'
     binary: '{{ .ProjectName }}_v{{ .Version }}'
     flags:
       - -trimpath
@@ -13,27 +14,45 @@ builds:
       - no_gcs
       - no_azurerm
     ldflags:
-      - -s -w -X main.Version=v{{ .Version }}
+      - '-s -w -X main.Version=v{{ .Version }} -X main.Commit={{ .Commit }}'
     goos:
       - linux
       - darwin
       - windows
+      - freebsd
     goarch:
       - amd64
       - arm64
-release:
-  use_existing_draft: true
-checksum:
-  name_template: "{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS"
-  algorithm: sha256
+      - '386'
+      - arm
+    ignore:
+      - goos: darwin
+        goarch: '386'
 archives:
   - formats: [zip]
-    name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: '{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+checksum:
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_v{{ .Version }}_manifest.json'
+  name_template: '{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS'
+  algorithm: sha256
+signs:
+  - artifacts: checksum
+    args:
+      - "--batch"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
+release:
+  use_existing_draft: true
+  extra_files:
+    - glob: 'terraform-registry-manifest.json'
+      name_template: '{{ .ProjectName }}_v{{ .Version }}_manifest.json'
 snapshot:
   version_template: "{{ .Tag }}-next"
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
+  disable: true
