@@ -26,8 +26,7 @@ const (
 )
 
 var (
-	_ resource.Resource                = (*serviceResource)(nil)
-	_ resource.ResourceWithImportState = (*serviceResource)(nil)
+	_ resource.Resource = (*serviceResource)(nil)
 )
 
 type serviceResource struct{}
@@ -227,10 +226,6 @@ func (r *serviceResource) Delete(ctx context.Context, req resource.DeleteRequest
 		resp.Diagnostics.AddError("ecspresso delete failed", err.Error())
 		return
 	}
-}
-
-func (r *serviceResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
 // tfstateOverridesFromPlan extracts the tfstate_values attribute as a

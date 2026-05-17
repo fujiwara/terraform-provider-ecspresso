@@ -53,8 +53,9 @@ null_resource方式に対する優位点は主に4つ:
    - destroy時の挙動を `destroy_action` 属性で宣言(`delete` / `ignore` / `scale_zero_then_delete`)
    - 循環依存問題やaws-cli回避策をProvider側で吸収できる余地がある
 
-3. **importできる**
-   - 既存サービスをterraform stateに取り込める
+3. **既存サービスをterraform管理下に取り込める**
+   - 仕組みは `terraform import` ではなく「初回 apply による取り込み」。`ecspresso deploy` がidempotentなので、既存サービスを指す `ecspresso.yml` を `config_path` に指定して apply するだけで安全に state 化できる。詳細は README の "Adopting an existing ECS service" を参照
+   - `terraform import` は実装しない。リソースの実体は `ecspresso.yml`(およびtask/service definition templates) であって cluster/service 名のペアではないため、importのidentifierだけで残りの属性 (`config_path`, `tfstate_values`, `tfstate_func_prefix`, `destroy_action`) を復元できず、結局 `.tf` 側を書く手間は変わらない
 
 4. **ecspressoをGoライブラリとして直接利用**
    - バイナリのパス解決・shell実行・stdout/stderrパースが不要
@@ -314,11 +315,16 @@ Provider に同梱する ecspresso バージョンと、開発者ローカルの
 
 `aws_codedeploy_deployment_group` との依存グラフが循環しないよう、Provider 側で「ecspresso 経由で scale 0 → service delete してから deployment group 削除」を吸収する設計を検討。あるいは `destroy_action = "ignore"` で逃がしてもらう。
 
-### 6. import時の整合性
+### 6. import の扱い
 
-既存サービスを import した直後、`tfstate_values` の参照先リソースもまだ state に入っていない可能性。
+`terraform import` は実装しない方針で確定。
 
-→ ImportState では値の解決はせず、次の plan で `tfstate_values` の妥当性が確認される流れ。
+理由:
+- リソースの identity は `ecspresso.yml` + その配下のtask/service definition templatesにあり、cluster/service名のペアでは復元しきれない
+- `terraform import` を実装したとしてもユーザーは `config_path` / `tfstate_values` / `tfstate_func_prefix` / `destroy_action` を `.tf` に書く必要があり、import独自の体験的メリットがない
+- `ecspresso deploy` がidempotent(task/service definition の差分が無ければ no-op 相当)なので、既存サービスの取り込みは「リソースを `.tf` に書いて初回 `terraform apply` を打つ」だけで安全に達成できる
+
+→ 運用上の手順は README の "Adopting an existing ECS service (no `terraform import`)" に明文化済み。
 
 ## 進め方
 

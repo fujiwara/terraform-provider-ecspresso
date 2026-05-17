@@ -142,6 +142,36 @@ data "aws_ecs_service" "app" {
 
 The reference to `ecspresso_service.app` already creates an implicit dependency, so an explicit `depends_on` is not required — the data source will run after the ecspresso deploy.
 
+#### Adopting an existing ECS service (no `terraform import`)
+
+`ecspresso_service` deliberately does **not** implement `terraform import`. The
+authoritative identity of the resource is the `ecspresso.yml` (plus its task
+and service definition templates), not the cluster/service name pair, so an
+identifier passed to `terraform import` would not be enough information to
+reconstruct the rest of the resource — `config_path`, `tfstate_values`,
+`tfstate_func_prefix`, and `destroy_action` still have to be written in `.tf`
+either way.
+
+Adopting an already-deployed service into Terraform is instead a normal
+`terraform apply`:
+
+1. Point `config_path` at the `ecspresso.yml` that already deploys the
+   service in question.
+2. Add the `ecspresso_service` resource to `.tf` with whatever
+   `tfstate_values` etc. you want Terraform to manage.
+3. `terraform apply`.
+
+`ecspresso deploy` is idempotent against an existing service — it diffs the
+rendered task and service definitions against AWS and only registers a new
+task definition revision / updates the service if there is a real change. So
+the worst case for the first adoption-apply is the same outcome as running
+`ecspresso deploy` on the CLI: either a no-op, or the deploy that would
+have happened anyway. The service is never recreated from scratch.
+
+If you want a strict "import only, no deploy" first apply, render the
+ecspresso config to the same task / service definition AWS currently holds
+before running `terraform apply` so that ecspresso's diff comes out empty.
+
 ## License
 
 MIT
