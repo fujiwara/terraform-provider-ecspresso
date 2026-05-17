@@ -2,7 +2,7 @@
 
 A Terraform provider that manages Amazon ECS services through [kayac/ecspresso](https://github.com/kayac/ecspresso). Runs ecspresso as a Go library inside Terraform — no `null_resource + local-exec`, no three-phase apply.
 
-**Status:** Pre-release. Not yet on the Terraform Registry. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for `dev_overrides` install and release notes, [docs/DESIGN.md](docs/DESIGN.md) for the rationale.
+**Status:** Published on the [Terraform Registry](https://registry.terraform.io/providers/fujiwara/ecspresso/latest) — `terraform init` pulls it from `source = "fujiwara/ecspresso"`. See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for local build / release notes and [docs/DESIGN.md](docs/DESIGN.md) for the design rationale.
 
 ## Quick start
 
