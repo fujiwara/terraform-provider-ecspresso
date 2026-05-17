@@ -58,7 +58,7 @@ Run `terraform apply`. Set AWS credentials and any `{{ env "FOO" }}` / `{{ must_
 |------|-------------|
 | `id` | `<cluster>/<service>` |
 | `service_arn`, `service_name`, `cluster_arn`, `cluster_name` | ECS identifiers. |
-| `last_apply_at` | RFC3339 timestamp of the last apply that ran deploy. In `plan`, `(known after apply)` means the next apply will redeploy. |
+| `last_apply_at` | RFC3339 timestamp of the last apply that actually ran `ecspresso deploy`. In `plan`, `(known after apply)` means the next apply *may* redeploy — whether it actually does depends on ecspresso's diff against AWS. |
 
 Task definition identity (`arn` / `family` / `revision`) and other live AWS-side details are intentionally not exposed — see Notes for how to get them.
 
@@ -96,7 +96,7 @@ The Terraform backend has not yet written the state object on the first apply, s
 
 ### `last_apply_at` is a Terraform-side timestamp
 
-`last_apply_at` is the timestamp of the host that ran `terraform apply` (Terraform side, not AWS — use `data "aws_ecs_service"` for live AWS-side status). `(known after apply)` in `plan` means the next apply will redeploy; an unchanged value means only Terraform state will change (e.g. `destroy_action` only).
+`last_apply_at` is the timestamp of the host that ran `terraform apply` *when that apply actually invoked `ecspresso deploy`* (Terraform side, not AWS — use `data "aws_ecs_service"` for live AWS-side status). `(known after apply)` in `plan` means the next apply may redeploy; whether it really does depends on ecspresso's diff against AWS — if the rendered definitions already match what's deployed, deploy is skipped and the previous timestamp is preserved.
 
 ### Reading the live AWS state
 
@@ -125,7 +125,7 @@ To adopt an already-deployed service:
 2. Add the `ecspresso_service` resource to `.tf` with whatever `tfstate_values` etc. you want Terraform to manage.
 3. `terraform apply`.
 
-The first adoption-apply runs `ecspresso deploy`. The service is updated in place (not recreated), but a new task definition revision is registered even when there is no logical diff — the provider doesn't yet diff-and-skip.
+The first adoption-apply runs `ecspresso diff` first. When the rendered local definitions already match the deployed service / task definition, no `ecspresso deploy` is invoked — the service is left untouched and `last_apply_at` keeps its previous value (or stays empty if this is the very first apply). Otherwise it deploys, which means a new task definition revision is registered and the service is updated in place (not recreated).
 
 ## License
 

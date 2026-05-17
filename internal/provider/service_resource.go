@@ -129,7 +129,7 @@ func (r *serviceResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 				},
 			},
 			"last_apply_at": schema.StringAttribute{
-				Description: "RFC3339 timestamp of the most recent `terraform apply` that invoked `ecspresso deploy` for this resource. This is the time on the Terraform side (the host where `terraform apply` ran), **not** the AWS-side deployment time — use `data \"aws_ecs_service\"` for live AWS-side state. In a `terraform plan`, a value of `(known after apply)` indicates the next apply will run `ecspresso deploy`; the timestamp staying unchanged indicates the apply will only update Terraform state (e.g. when only `destroy_action` changed).",
+				Description: "RFC3339 timestamp of the most recent `terraform apply` that actually invoked `ecspresso deploy` for this resource. This is the time on the Terraform side (the host where `terraform apply` ran), **not** the AWS-side deployment time — use `data \"aws_ecs_service\"` for live AWS-side state. In a `terraform plan`, a value of `(known after apply)` means the next apply may run `ecspresso deploy`; whether it actually does depends on ecspresso's diff against AWS. If the rendered definitions already match AWS, the deploy is skipped and the previous timestamp is preserved.",
 				Computed:    true,
 			},
 			// task_definition_* are intentionally not exposed. They
@@ -155,7 +155,7 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	info, err := ecspressoapi.Deploy(ctx, plan.ConfigPath.ValueString(), plan.TFStateFuncPrefix.ValueString(), tfstateOverrides)
+	info, deployed, err := ecspressoapi.Deploy(ctx, plan.ConfigPath.ValueString(), plan.TFStateFuncPrefix.ValueString(), tfstateOverrides)
 	if err != nil {
 		resp.Diagnostics.AddError("ecspresso deploy failed", err.Error())
 		return
@@ -168,7 +168,16 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 	// sensitive attribute" check at apply time.
 	resp.State.Raw = req.Plan.Raw
 	resp.Diagnostics.Append(setComputedFromInfo(ctx, &resp.State, info)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("last_apply_at"), nowTimestamp())...)
+	// last_apply_at reflects "the apply that actually ran a deploy".
+	// On adoption-Create with no diff against AWS, the rendered configs
+	// already match the deployed service and ecspresso deploy is
+	// skipped; we record an empty string so the user can see no AWS-
+	// side change happened.
+	last := ""
+	if deployed {
+		last = nowTimestamp()
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("last_apply_at"), last)...)
 }
 
 func (r *serviceResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -220,7 +229,7 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	info, err := ecspressoapi.Deploy(ctx, plan.ConfigPath.ValueString(), plan.TFStateFuncPrefix.ValueString(), tfstateOverrides)
+	info, deployed, err := ecspressoapi.Deploy(ctx, plan.ConfigPath.ValueString(), plan.TFStateFuncPrefix.ValueString(), tfstateOverrides)
 	if err != nil {
 		resp.Diagnostics.AddError("ecspresso deploy failed", err.Error())
 		return
@@ -228,7 +237,16 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	resp.State.Raw = req.Plan.Raw
 	resp.Diagnostics.Append(setComputedFromInfo(ctx, &resp.State, info)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("last_apply_at"), nowTimestamp())...)
+	// Update the timestamp only when ecspresso actually ran a deploy.
+	// When `tfstate_values` changes but the rendered definitions still
+	// match AWS (HasDiff = false), the previous timestamp survives so
+	// `last_apply_at` keeps accurately reporting "when did this resource
+	// last cause AWS state to change".
+	if deployed {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("last_apply_at"), nowTimestamp())...)
+	} else {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("last_apply_at"), state.LastApplyAt.ValueString())...)
+	}
 }
 
 // ModifyPlan controls how last_apply_at shows up in plan output. On
