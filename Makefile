@@ -1,4 +1,4 @@
-.PHONY: build clean test fmt vet install dist
+.PHONY: build clean test fmt vet install dist docs
 
 BINARY := terraform-provider-ecspresso
 
@@ -28,3 +28,9 @@ install:
 
 dist:
 	goreleaser build --snapshot --clean
+
+# Re-generate the Terraform Registry documentation under docs/ from the
+# Plugin Framework schema. Run this after changing resource schemas.
+# Requires `tfplugindocs` (https://github.com/hashicorp/terraform-plugin-docs).
+docs:
+	tfplugindocs generate --provider-name ecspresso
