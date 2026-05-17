@@ -65,6 +65,33 @@ resource "ecspresso_service" "app" {
 / `terraform apply`. AWS credentials come from the standard environment
 (`AWS_PROFILE`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, etc.).
 
+## Tests
+
+Unit tests (no AWS access required):
+
+```sh
+make test
+```
+
+Acceptance tests hit real AWS via a real ECS service. They are gated on
+`TF_ACC=1` (set automatically by `make acc-test`) and a per-fixture env
+var, so `go test ./...` on a developer machine that has no AWS access is
+unaffected.
+
+```sh
+export AWS_REGION=us-east-1                          # or AWS_DEFAULT_REGION
+export ECSPRESSO_TEST_CONFIG_PATH=/abs/path/to/ecspresso.yml
+make acc-test
+```
+
+`ECSPRESSO_TEST_CONFIG_PATH` is an absolute path to an `ecspresso.yml`
+that already points at a deployable service (i.e. the same kind of
+config you'd pass to `config_path` on the resource). The test runs the
+full Create / Read / Delete cycle, so the cluster and task / service
+definitions referenced from the config must be valid and the credentials
+in the shell must be allowed to register task definitions, create the
+service, and delete it again. Skipped silently when the env var is unset.
+
 ## Releasing
 
 The release pipeline (`.github/workflows/tagpr-release.yml`) drives
