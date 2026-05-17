@@ -34,7 +34,7 @@ func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tf
 	if err != nil {
 		return nil, err
 	}
-	applyTFStateOverrides(app, tfstateFuncPrefix, tfstateOverrides)
+	configureTFStatePlugin(app, tfstateFuncPrefix, tfstateOverrides)
 	if err := app.Deploy(ctx, ecspresso.DeployOption{
 		Wait:          true,
 		UpdateService: true,
@@ -72,26 +72,36 @@ func Delete(ctx context.Context, configPath string, tfstateFuncPrefix string, tf
 	if err != nil {
 		return err
 	}
-	applyTFStateOverrides(app, tfstateFuncPrefix, tfstateOverrides)
+	configureTFStatePlugin(app, tfstateFuncPrefix, tfstateOverrides)
 	return app.Delete(ctx, ecspresso.DeleteOption{
 		Force:     true,
 		Terminate: true,
 	})
 }
 
-// applyTFStateOverrides pushes the given overrides into the tfstate
-// plugin identified by funcPrefix. No-op when overrides are empty or
-// when no matching tfstate plugin is configured (ecspresso.yml may
-// legitimately have no tfstate plugin at all).
-func applyTFStateOverrides(app *ecspresso.App, funcPrefix string, overrides map[string]any) {
-	if len(overrides) == 0 {
-		return
-	}
+// configureTFStatePlugin pushes the caller-supplied overrides into
+// the tfstate plugin identified by funcPrefix and then discards the
+// scanned tfstate so Lookup serves keys from those overrides only.
+//
+// The provider's design treats `tfstate_values` as the complete set
+// of tfstate-shaped inputs to ecspresso; resolving a missing key
+// from a possibly-stale tfstate file would let Terraform-unaware
+// changes leak into a deploy. After this call, ecspresso's
+// `tfstate(...)` lookups against any key not present in
+// `tfstate_values` fail fast with "is not found in tfstate", which
+// is exactly the early signal we want.
+//
+// No-op when no matching tfstate plugin is configured (ecspresso.yml
+// may legitimately have no tfstate plugin at all).
+func configureTFStatePlugin(app *ecspresso.App, funcPrefix string, overrides map[string]any) {
 	state, ok := app.PluginInstance("tfstate", funcPrefix).(*tfstate.TFState)
 	if !ok {
 		return
 	}
-	state.SetOverrides(overrides)
+	if len(overrides) > 0 {
+		state.SetOverrides(overrides)
+	}
+	state.DiscardScannedState()
 }
 
 // IsNotFound reports whether err indicates the ECS service does not exist.

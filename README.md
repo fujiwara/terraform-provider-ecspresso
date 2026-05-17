@@ -83,7 +83,9 @@ Relative paths are resolved against the **working directory of the `terraform` p
 
 ### `tfstate_values` semantics
 
-Each key is a tfstate address at the resource level (e.g. `"aws_iam_role.task"`, `"output.foo"`), and the value can be any Terraform type — a whole resource attribute map, a list, a bool, or a scalar. The corresponding `tfstate(...)` lookups in ecspresso's jsonnet/template (including nested ones like `tfstate('aws_iam_role.task.arn')`) are resolved against this map. Overrides take precedence over the tfstate file the plugin loads from `path` / `url`, so this resolves the "state file is one apply behind" problem.
+Each key is a tfstate address at the resource level (e.g. `"aws_iam_role.task"`, `"output.foo"`), and the value can be any Terraform type — a whole resource attribute map, a list, a bool, or a scalar. The corresponding `tfstate(...)` lookups in ecspresso's jsonnet/template (including nested ones like `tfstate('aws_iam_role.task.arn')`) are resolved against this map.
+
+**`tfstate_values` is the complete input set when running through this provider.** On every apply, the provider discards the tfstate plugin's scanned data and serves lookups from `tfstate_values` only. The same `ecspresso.yml` keeps working from the CLI (it still reads the on-disk / S3 tfstate), but from inside Terraform, any `tfstate(...)` reference not covered by `tfstate_values` surfaces as `is not found in tfstate` at apply time. This is the intended early signal — falling back to the scanned state would let Terraform-unaware changes leak into a deploy.
 
 ### `optional: true` is bootstrap-only
 
