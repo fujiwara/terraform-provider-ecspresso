@@ -1,0 +1,44 @@
+name: acceptance test
+on:
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "AWS region of the pre-provisioned bootstrap stack"
+        required: false
+        type: string
+        default: "ap-northeast-1"
+
+permissions:
+  id-token: write       # required by aws-actions/configure-aws-credentials (OIDC)
+  contents: read
+
+# The bootstrap stack under examples/acceptance/bootstrap/ is assumed
+# to be apply'd once by a human and left in place — its standing cost
+# is zero (empty ECS cluster, IAM role, security group), and keeping
+# it around means this workflow only needs permission to create and
+# delete the ECS service itself. See examples/acceptance/oidc/ for the
+# IAM role definition.
+jobs:
+  acc-test:
+    runs-on: ubuntu-latest
+    environment: acc-test
+    env:
+      AWS_REGION: ${{ inputs.region }}
+      TFSTATE_URL: ${{ vars.TFSTATE_URL }}
+      ECSPRESSO_TEST_CONFIG_PATH: ${{ github.workspace }}/examples/acceptance/ecspresso.jsonnet
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: make acc-test
+        run: make acc-test

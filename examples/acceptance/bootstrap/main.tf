@@ -1,4 +1,10 @@
 terraform {
+  # State is intentionally stored in S3 so the acceptance test in
+  # GitHub Actions can read it without re-running terraform apply.
+  # Pass bucket / key / region via `terraform init -backend-config=...`;
+  # see README.md.
+  backend "s3" {}
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -7,7 +13,15 @@ terraform {
   }
 }
 
-provider "aws" {}
+provider "aws" {
+  default_tags {
+    tags = {
+      Project   = "terraform-provider-ecspresso"
+      Purpose   = "acceptance-test"
+      ManagedBy = "terraform"
+    }
+  }
+}
 
 # Minimum prerequisites for the acceptance test: an empty ECS cluster, a
 # task execution role, and a security group attached to the default VPC.
