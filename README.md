@@ -202,10 +202,8 @@ The release pipeline (`.github/workflows/tagpr-release.yml`) drives [Songmu/tagp
 
 One-time setup before the first release:
 
-1. **GPG signing key.** Generate a key pair (no passphrase or with one — both supported), export the **public** key as ASCII-armored, and register that public key under your Terraform Registry account. The fingerprint must match what goreleaser will use to sign.
-2. **GitHub Secrets.** On the GitHub repository, add:
-   - `GPG_PRIVATE_KEY` — the ASCII-armored **private** key, exported with `gpg --armor --export-secret-keys $FINGERPRINT`.
-   - `PASSPHRASE` — passphrase for the key (set even if empty, to satisfy the action input).
+1. **GPG signing key.** Generate a passphrase-less key pair, export the **public** key as ASCII-armored, and register that public key under your Terraform Registry account. The fingerprint must match the `GPG_FINGERPRINT` env value in `.github/workflows/tagpr-release.yml` — update the workflow if you re-key.
+2. **`deploy` environment secret.** On the GitHub repository, under *Settings → Environments → `deploy` → Environment secrets*, add `GPG_PRIVATE_KEY` — the ASCII-armored **private** key, exported with `gpg --armor --export-secret-keys $FINGERPRINT`. The release job runs in `environment: deploy` so this secret is the only one needed for signing.
 3. **Terraform Registry.** Sign in at [registry.terraform.io](https://registry.terraform.io/) with the GitHub account that owns this repository, click *Publish → Provider*, pick the repo, and confirm the namespace (`fujiwara/ecspresso`).
 
 After that, releases happen by merging a tagpr-generated PR into `main`; the workflow tags, builds signed artifacts, and publishes a GitHub Release. The Terraform Registry polls GitHub for new tags and picks the artifacts up automatically.
