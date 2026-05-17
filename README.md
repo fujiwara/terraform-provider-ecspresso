@@ -11,8 +11,15 @@ A Terraform provider that manages Amazon ECS services through [kayac/ecspresso](
 Build the provider, then point Terraform at the local binary via dev overrides:
 
 ```sh
-go build -o terraform-provider-ecspresso .
+make build
 ```
+
+`make build` passes `-tags no_gcs,no_azurerm` to `go build`, mirroring the
+[ecspresso CLI build](https://github.com/kayac/ecspresso/blob/v2/Makefile).
+These tags drop the GCS and AzureRM `tfstate-lookup` backends, which ECS users
+effectively never use as their Terraform state backend, and shave roughly 30 MB
+off the binary. The S3 and Terraform Cloud / Terraform Enterprise backends stay
+enabled. The release builds in `.goreleaser.yml` apply the same tags.
 
 Add to `~/.terraformrc`:
 

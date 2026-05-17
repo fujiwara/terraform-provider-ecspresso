@@ -2,10 +2,14 @@
 
 BINARY := terraform-provider-ecspresso
 
+# Exclude tfstate-lookup backends that ECS users effectively never use.
+# Keeps S3 and Terraform Enterprise / Terraform Cloud (HTTP) backends.
+BUILD_TAGS := no_gcs,no_azurerm
+
 build: $(BINARY)
 
 $(BINARY): go.mod go.sum *.go internal/**/*.go
-	go build -o $@ .
+	go build -tags "$(BUILD_TAGS)" -o $@ .
 
 clean:
 	rm -rf $(BINARY) dist/
@@ -20,7 +24,7 @@ vet:
 	go vet ./...
 
 install:
-	go install .
+	go install -tags "$(BUILD_TAGS)" .
 
 dist:
 	goreleaser build --snapshot --clean

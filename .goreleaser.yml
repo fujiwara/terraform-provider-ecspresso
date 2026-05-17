@@ -9,6 +9,9 @@ builds:
     binary: '{{ .ProjectName }}_v{{ .Version }}'
     flags:
       - -trimpath
+    tags:
+      - no_gcs
+      - no_azurerm
     ldflags:
       - -s -w -X main.Version=v{{ .Version }}
     goos:
