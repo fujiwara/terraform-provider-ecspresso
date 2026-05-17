@@ -112,9 +112,7 @@ The reference creates an implicit dependency, so `depends_on` is not required.
 
 ### Forcing a redeploy, passing CLI flags
 
-To force a redeploy without changing any input, use `ecspresso deploy --force-new-deployment` from the CLI. `terraform apply -replace=ecspresso_service.app` also works but performs destroy+create, which causes downtime — the CLI path is safer.
-
-`ecspresso deploy` flags (`--no-wait`, `--suspend-auto-scaling`, …) are intentionally not surfaced as Terraform attributes — pass them to the CLI when running ecspresso directly.
+The provider does not expose a way to force a redeploy or pass `ecspresso deploy` flags (`--force-new-deployment`, `--no-wait`, `--suspend-auto-scaling`, …) as Terraform attributes. When you need any of those, run the ecspresso CLI directly against the same `ecspresso.yml`.
 
 If `ecspresso.yml` references OS env vars via `{{ env "FOO" }}` / `{{ must_env "FOO" }}`, set them in the shell that runs `terraform apply`. The provider does not expose an `envs` attribute on purpose.
 
