@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/fujiwara/tfstate-lookup/tfstate"
 	ecspresso "github.com/kayac/ecspresso/v2"
 )
@@ -37,6 +38,14 @@ func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tf
 	if err := app.Deploy(ctx, ecspresso.DeployOption{
 		Wait:          true,
 		UpdateService: true,
+		// DesiredCount must be set to ecspresso.DefaultDesiredCount
+		// (-1) so that ecspresso's calcDesiredCount falls back to the
+		// value defined in the service definition. When the CLI runs
+		// ecspresso, kong's `default:"-1"` does this automatically;
+		// the library API leaves the field nil, in which case
+		// calcDesiredCount returns nil and CreateService rejects the
+		// request with "DesiredCount is missing".
+		DesiredCount: aws.Int32(ecspresso.DefaultDesiredCount),
 	}); err != nil {
 		return nil, err
 	}
