@@ -121,6 +121,22 @@ To force a redeploy without changing any input, use `ecspresso deploy --force-ne
 
 If `ecspresso.yml` references OS environment variables via `{{ env "FOO" }}` / `{{ must_env "FOO" }}`, set them in the shell that invokes `terraform apply`. The provider intentionally does not expose an `envs` attribute — those values are application-side concerns owned by the ecspresso CLI workflow, not by Terraform.
 
+#### `ecspresso.yml` setup
+
+The `ecspresso.yml` referenced by `config_path` should declare a `tfstate` plugin so the provider can push `tfstate_values` overrides into it. Set `optional: true` on that plugin:
+
+```yaml
+plugins:
+  - name: tfstate
+    config:
+      url: s3://my-bucket/path/to/terraform.tfstate
+      optional: true
+```
+
+`optional: true` is what lets the **first** `terraform apply` succeed. The Terraform backend has not yet written the state object the plugin is configured to read, so without this flag the plugin's initial load fails (404 / file not found) before the provider gets a chance to push overrides. With `optional: true`, ecspresso logs a warning and continues with an empty state, and the `tfstate_values` overrides take over from there. On subsequent applies the backend-written tfstate is read normally and `tfstate_values` is layered on top of it.
+
+Caveat: the same `ecspresso.yml`, when run from the ecspresso CLI directly, will also accept `optional: true` and silently fall back to an empty tfstate if `path` / `url` is mistyped — `tfstate(...)` lookups then surface as "not found" errors rather than as a clear 404 on the configured URL. If a config file is shared between this provider and direct CLI use, either accept that tradeoff or keep the CLI-side config free of `optional: true`.
+
 #### Computed attributes
 
 - `id` — `<cluster>/<service>`
@@ -170,8 +186,11 @@ the worst case for the first adoption-apply is the same outcome as running
 have happened anyway. The service is never recreated from scratch.
 
 If you want a strict "import only, no deploy" first apply, render the
-ecspresso config to the same task / service definition AWS currently holds
-before running `terraform apply` so that ecspresso's diff comes out empty.
+ecspresso config so that its diff against AWS comes out empty before
+running `terraform apply`.
+
+(Reminder: the first-apply success itself depends on `optional: true` on the
+tfstate plugin — see "ecspresso.yml setup" above.)
 
 ## License
 
