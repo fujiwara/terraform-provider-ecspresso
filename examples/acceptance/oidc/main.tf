@@ -39,7 +39,7 @@ variable "tfstate_bucket" {
 variable "tfstate_key" {
   description = "S3 object key of the bootstrap stack's tfstate."
   type        = string
-  default     = "terraform-provider-ecspresso/acceptance/bootstrap.tfstate"
+  default     = "examples/acceptance/bootstrap/terraform.tfstate"
 }
 
 locals {
