@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -26,7 +27,8 @@ const (
 )
 
 var (
-	_ resource.Resource = (*serviceResource)(nil)
+	_ resource.Resource               = (*serviceResource)(nil)
+	_ resource.ResourceWithModifyPlan = (*serviceResource)(nil)
 )
 
 type serviceResource struct{}
@@ -48,6 +50,7 @@ type serviceResourceModel struct {
 	ServiceName       types.String  `tfsdk:"service_name"`
 	ClusterArn        types.String  `tfsdk:"cluster_arn"`
 	ClusterName       types.String  `tfsdk:"cluster_name"`
+	LastApplyAt       types.String  `tfsdk:"last_apply_at"`
 }
 
 func (r *serviceResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -125,6 +128,10 @@ func (r *serviceResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
+			"last_apply_at": schema.StringAttribute{
+				Description: "RFC3339 timestamp of the most recent `terraform apply` that invoked `ecspresso deploy` for this resource. This is the time on the Terraform side (the host where `terraform apply` ran), **not** the AWS-side deployment time — use `data \"aws_ecs_service\"` for live AWS-side state. In a `terraform plan`, a value of `(known after apply)` indicates the next apply will run `ecspresso deploy`; the timestamp staying unchanged indicates the apply will only update Terraform state (e.g. when only `destroy_action` changed).",
+				Computed:    true,
+			},
 			// task_definition_* are intentionally not exposed. They
 			// advance on every ecspresso deploy — including CLI deploys
 			// outside Terraform's awareness — so any value Terraform
@@ -161,6 +168,7 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 	// sensitive attribute" check at apply time.
 	resp.State.Raw = req.Plan.Raw
 	resp.Diagnostics.Append(setComputedFromInfo(ctx, &resp.State, info)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("last_apply_at"), nowTimestamp())...)
 }
 
 func (r *serviceResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -185,9 +193,25 @@ func (r *serviceResource) Read(ctx context.Context, req resource.ReadRequest, re
 }
 
 func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan serviceResourceModel
+	var plan, state serviceResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if !updateNeedsDeploy(plan, state) {
+		// Only state-only attributes (e.g. destroy_action) changed; preserve
+		// the existing computed values and skip the ecspresso deploy.
+		info := &ecspressoapi.ServiceInfo{
+			ServiceArn:  state.ServiceArn.ValueString(),
+			ServiceName: state.ServiceName.ValueString(),
+			ClusterArn:  state.ClusterArn.ValueString(),
+			ClusterName: state.ClusterName.ValueString(),
+		}
+		resp.State.Raw = req.Plan.Raw
+		resp.Diagnostics.Append(setComputedFromInfo(ctx, &resp.State, info)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("last_apply_at"), state.LastApplyAt.ValueString())...)
 		return
 	}
 
@@ -204,6 +228,47 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	resp.State.Raw = req.Plan.Raw
 	resp.Diagnostics.Append(setComputedFromInfo(ctx, &resp.State, info)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("last_apply_at"), nowTimestamp())...)
+}
+
+// ModifyPlan controls how last_apply_at shows up in plan output. On
+// Update, set it to Unknown ("(known after apply)") when an ecspresso
+// deploy will actually run, and carry the prior state value forward
+// when the update is state-only (e.g. destroy_action change). On
+// Create the attribute is naturally Unknown so no action is needed;
+// on Destroy there is no plan to mutate.
+func (r *serviceResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var plan, state serviceResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if updateNeedsDeploy(plan, state) {
+		plan.LastApplyAt = types.StringUnknown()
+	} else {
+		plan.LastApplyAt = state.LastApplyAt
+	}
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
+}
+
+// nowTimestamp returns the current time formatted as RFC3339 in UTC.
+// Wrapped in a variable to allow tests to substitute a fixed clock if needed.
+var nowTimestamp = func() string {
+	return time.Now().UTC().Format(time.RFC3339)
+}
+
+// updateNeedsDeploy reports whether an Update should invoke ecspresso deploy.
+// destroy_action only affects Delete behaviour and must not trigger a
+// redeploy. config_path is RequiresReplace so it never reaches Update.
+func updateNeedsDeploy(plan, state serviceResourceModel) bool {
+	return !plan.TFStateValues.Equal(state.TFStateValues) ||
+		!plan.TFStateFuncPrefix.Equal(state.TFStateFuncPrefix)
 }
 
 func (r *serviceResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

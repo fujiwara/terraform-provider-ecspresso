@@ -126,6 +126,7 @@ If `ecspresso.yml` references OS environment variables via `{{ env "FOO" }}` / `
 - `id` — `<cluster>/<service>`
 - `service_arn`, `service_name`
 - `cluster_arn`, `cluster_name`
+- `last_apply_at` — RFC3339 timestamp of the most recent `terraform apply` that invoked `ecspresso deploy` for this resource. This is a Terraform-side timestamp (taken on the host running `terraform apply`), **not** the AWS-side deployment time — use `data "aws_ecs_service"` for live AWS-side deployment status. Its purpose is to make `terraform plan` show whether the next apply will redeploy: `(known after apply)` means `ecspresso deploy` will run; an unchanged timestamp means the apply will only update Terraform state (e.g. when only `destroy_action` changed).
 
 Task-definition identity (`arn` / `family` / `revision`) and other AWS-managed details (desired count, launch type, …) are intentionally not exposed as attributes of this resource. They advance on every `ecspresso deploy` — including CLI deploys that Terraform is unaware of — so any value Terraform recorded would be stale almost immediately.
 
