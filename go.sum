@@ -216,6 +216,8 @@ github.com/fujiwara/ssm-lookup v0.1.1 h1:Cwx7Y6A0HbIKyAzS60DYcf/TZ5KZHY/vTlCtUoy
 github.com/fujiwara/ssm-lookup v0.1.1/go.mod h1:ssVwS1FrHAKouOMEmYC6j07XRKqBGdABRmv6gBKewVg=
 github.com/fujiwara/tfstate-lookup v1.12.0 h1:xsRD++g4jUCW2H4nbsZseA0bG92uK8WmgkkECKBJvkc=
 github.com/fujiwara/tfstate-lookup v1.12.0/go.mod h1:c7Nd3ZdQ2UljabuWzhgDaseKZhdXfgs6YLFarGbXyDs=
+github.com/fujiwara/tfstate-lookup v1.12.1 h1:WQ0/+wYDm5yeiQtfejriKHonIXH6DSGkCJXEX8cV3hw=
+github.com/fujiwara/tfstate-lookup v1.12.1/go.mod h1:c7Nd3ZdQ2UljabuWzhgDaseKZhdXfgs6YLFarGbXyDs=
 github.com/fujiwara/tracer v1.1.3 h1:bO5JDVIVkvD6SglrIOx2bs6DkUQo8hQ+WiLRm3+GRRs=
 github.com/fujiwara/tracer v1.1.3/go.mod h1:VNQCVH8EeDdKBlk8x4JsRUJuPRya+wVta2kQNlL5zgI=
 github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 h1:+zs/tPmkDkHx3U66DAb0lQFJrpS6731Oaa12ikc+DiI=
