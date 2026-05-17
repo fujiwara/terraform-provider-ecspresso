@@ -74,23 +74,40 @@ make test
 ```
 
 Acceptance tests hit real AWS via a real ECS service. They are gated on
-`TF_ACC=1` (set automatically by `make acc-test`) and a per-fixture env
-var, so `go test ./...` on a developer machine that has no AWS access is
-unaffected.
+`TF_ACC=1` (set automatically by `make acc-test`) and on
+`ECSPRESSO_TEST_CONFIG_PATH`, so `go test ./...` on a developer machine
+that has no AWS access is unaffected.
+
+A self-contained fixture lives under [`examples/acceptance/`](../examples/acceptance/),
+including a Terraform stack that creates the prerequisite AWS resources
+(an empty ECS cluster, task execution role, security group in the
+default VPC). Use it as-is or as a template for your own setup. The
+flow:
 
 ```sh
-export AWS_REGION=us-east-1                          # or AWS_DEFAULT_REGION
-export ECSPRESSO_TEST_CONFIG_PATH=/abs/path/to/ecspresso.yml
+# Bring up the AWS prerequisites.
+cd examples/acceptance/bootstrap
+terraform init && terraform apply
+cd ..
+
+# Run the acceptance test from the repo root.
+export AWS_REGION=ap-northeast-1
+export ECSPRESSO_TEST_CONFIG_PATH=$PWD/ecspresso.jsonnet
+cd ../..
 make acc-test
+
+# Tear down.
+cd examples/acceptance/bootstrap
+terraform destroy
 ```
 
-`ECSPRESSO_TEST_CONFIG_PATH` is an absolute path to an `ecspresso.yml`
-that already points at a deployable service (i.e. the same kind of
-config you'd pass to `config_path` on the resource). The test runs the
-full Create / Read / Delete cycle, so the cluster and task / service
-definitions referenced from the config must be valid and the credentials
-in the shell must be allowed to register task definitions, create the
-service, and delete it again. Skipped silently when the env var is unset.
+See [`examples/acceptance/README.md`](../examples/acceptance/README.md)
+for the full description of the fixture and what it provisions.
+
+If you point `ECSPRESSO_TEST_CONFIG_PATH` at a different ecspresso config
+of your own, just make sure the cluster, task definition, and service
+definition it references are valid and the credentials in the shell are
+allowed to register task definitions, create the service, and delete it.
 
 ## Releasing
 
