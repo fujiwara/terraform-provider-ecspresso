@@ -38,7 +38,7 @@ plugins:
       optional: true   # bootstrap only — delete after the first apply (see Notes)
 ```
 
-Run `terraform apply`. That's it.
+Run `terraform apply`. AWS credentials and any `{{ env "FOO" }}` / `{{ must_env "FOO" }}` values that `ecspresso.yml` reads come from the shell that runs `terraform apply` — the same way you'd set them before running `ecspresso deploy` directly.
 
 ## `ecspresso_service` reference
 
@@ -114,7 +114,7 @@ The reference creates an implicit dependency, so `depends_on` is not required.
 
 The provider does not expose a way to force a redeploy or pass `ecspresso deploy` flags (`--force-new-deployment`, `--no-wait`, `--suspend-auto-scaling`, …) as Terraform attributes. When you need any of those, run the ecspresso CLI directly against the same `ecspresso.yml`.
 
-If `ecspresso.yml` references OS env vars via `{{ env "FOO" }}` / `{{ must_env "FOO" }}`, set them in the shell that runs `terraform apply`. The provider does not expose an `envs` attribute on purpose.
+The provider also does not expose an `envs` attribute. `{{ env "FOO" }}` / `{{ must_env "FOO" }}` are read from the OS environment of the `terraform` process — see Quick start for the basic case.
 
 ### Adopting an existing ECS service (no `terraform import`)
 
