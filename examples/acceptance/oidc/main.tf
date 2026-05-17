@@ -7,7 +7,15 @@ terraform {
   }
 }
 
-provider "aws" {}
+provider "aws" {
+  default_tags {
+    tags = {
+      Project   = "terraform-provider-ecspresso"
+      Purpose   = "acceptance-test"
+      ManagedBy = "terraform"
+    }
+  }
+}
 
 variable "github_repo" {
   description = "GitHub repository slug in 'owner/name' form that is allowed to assume the role."

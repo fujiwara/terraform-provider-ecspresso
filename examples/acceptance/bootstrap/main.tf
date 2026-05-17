@@ -7,7 +7,15 @@ terraform {
   }
 }
 
-provider "aws" {}
+provider "aws" {
+  default_tags {
+    tags = {
+      Project   = "terraform-provider-ecspresso"
+      Purpose   = "acceptance-test"
+      ManagedBy = "terraform"
+    }
+  }
+}
 
 # Minimum prerequisites for the acceptance test: an empty ECS cluster, a
 # task execution role, and a security group attached to the default VPC.
