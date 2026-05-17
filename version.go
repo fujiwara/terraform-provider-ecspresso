@@ -1,6 +1,6 @@
 package main
 
 var (
-	Version = "v0.0.2"
+	Version = "v0.0.3"
 	Commit  = ""
 )
