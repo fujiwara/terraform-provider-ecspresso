@@ -78,27 +78,28 @@ Acceptance tests hit real AWS via a real ECS service. They are gated on
 `ECSPRESSO_TEST_CONFIG_PATH`, so `go test ./...` on a developer machine
 that has no AWS access is unaffected.
 
-A self-contained fixture lives under [`examples/acceptance/`](../examples/acceptance/),
-including a Terraform stack that creates the prerequisite AWS resources
-(an empty ECS cluster, task execution role, security group in the
-default VPC). Use it as-is or as a template for your own setup. The
-flow:
+A self-contained fixture lives under [`examples/acceptance/`](../examples/acceptance/).
+It provisions the prerequisite AWS resources (empty ECS cluster, task
+execution role, security group in the default VPC) — all free at rest
+— and is designed to be **applied once and left in place** so every
+acceptance test run only touches the ECS service. State goes to S3 so
+the GitHub Actions workflow can read it without re-applying.
 
 ```sh
-# Bring up the AWS prerequisites.
+# One-time: apply the bootstrap stack.
 cd examples/acceptance/bootstrap
-terraform init && terraform apply
-cd ..
+terraform init \
+  -backend-config="bucket=<your-tfstate-bucket>" \
+  -backend-config="key=terraform-provider-ecspresso/acceptance/bootstrap.tfstate" \
+  -backend-config="region=ap-northeast-1"
+terraform apply
 
 # Run the acceptance test from the repo root.
+cd ../../..
 export AWS_REGION=ap-northeast-1
-export ECSPRESSO_TEST_CONFIG_PATH=$PWD/ecspresso.jsonnet
-cd ../..
+export TFSTATE_URL=s3://<your-tfstate-bucket>/terraform-provider-ecspresso/acceptance/bootstrap.tfstate
+export ECSPRESSO_TEST_CONFIG_PATH=$PWD/examples/acceptance/ecspresso.jsonnet
 make acc-test
-
-# Tear down.
-cd examples/acceptance/bootstrap
-terraform destroy
 ```
 
 See [`examples/acceptance/README.md`](../examples/acceptance/README.md)
@@ -113,36 +114,46 @@ allowed to register task definitions, create the service, and delete it.
 
 A `workflow_dispatch`-only workflow at
 [.github/workflows/acc-test.yml](../.github/workflows/acc-test.yml)
-drives the same flow on GitHub-hosted runners: bootstrap
-`terraform apply` → `make acc-test` → bootstrap `terraform destroy`.
-The destroy step uses `if: always()` so the cluster / role / SG get
-cleaned up even when the test fails.
+runs `make acc-test` on a GitHub-hosted runner. The bootstrap stack
+is assumed to be already applied (above), so the workflow only needs
+the permission to create / delete the ECS service.
 
 One-time setup:
 
 1. **AWS OIDC provider + IAM role.** Apply the Terraform stack under
-   [`examples/acceptance/oidc/`](../examples/acceptance/oidc/). It
-   creates the GitHub Actions OIDC provider and an IAM role with the
-   minimum ECS / IAM / EC2 permissions the bootstrap stack and the
-   acceptance test need. See that directory's README for the
-   "OIDC provider already exists" fallback.
+   [`examples/acceptance/oidc/`](../examples/acceptance/oidc/) **after**
+   the bootstrap stack. It creates the GitHub Actions OIDC provider
+   and an IAM role with a narrowly-scoped policy (ECS service +
+   task definition lifecycle on the acceptance test cluster, plus
+   `iam:PassRole` for the pre-provisioned task execution role and
+   `s3:GetObject` on the bootstrap tfstate — no create-role / create-
+   cluster / create-security-group). See that directory's README for
+   the "OIDC provider already exists" fallback.
 
    ```sh
    cd examples/acceptance/oidc
-   terraform init && terraform apply
+   terraform init
+   terraform apply \
+     -var tfstate_bucket=<your-tfstate-bucket> \
+     -var tfstate_key=terraform-provider-ecspresso/acceptance/bootstrap.tfstate
    ```
 
 2. **`acc-test` environment.** On the GitHub repository, *Settings →
-   Environments → `acc-test`*. Under **Environment variables**, add
-   `AWS_ROLE_ARN` set to the `role_arn` output from step 1. The ARN is
-   not a secret (assume succeeds only via the OIDC trust relationship),
-   so a variable is enough — no environment secrets are required.
+   Environments → `acc-test`*. Under **Environment variables**, add:
+
+   - `AWS_ROLE_ARN` — the `role_arn` output from step 1.
+   - `TFSTATE_URL` — `s3://<your-tfstate-bucket>/terraform-provider-ecspresso/acceptance/bootstrap.tfstate`.
+
+   Neither value is a secret (the ARN is just an identifier; the
+   bucket URL only resolves with a successful OIDC assume), so
+   variables — not secrets — are the right choice.
 
 After that, go to *Actions → acceptance test → Run workflow* on
-`main`, optionally override the region input, and the run boots the
-bootstrap stack, runs the test, and tears everything down. With
-`desiredCount: 0` in the service definition no Fargate tasks are
-launched, so the AWS-side cost of a run is effectively zero.
+`main`, optionally override the region, and the run will create the
+ECS service via the provider, assert its computed attributes, and
+delete it again. With `desiredCount: 0` in the service definition no
+Fargate tasks are launched, so the AWS-side cost of a run is
+effectively zero.
 
 ## Releasing
 

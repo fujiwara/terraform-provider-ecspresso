@@ -1,4 +1,10 @@
 terraform {
+  # State is intentionally stored in S3 so the acceptance test in
+  # GitHub Actions can read it without re-running terraform apply.
+  # Pass bucket / key / region via `terraform init -backend-config=...`;
+  # see README.md.
+  backend "s3" {}
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"

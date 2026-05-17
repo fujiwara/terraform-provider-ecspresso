@@ -4,23 +4,43 @@ Provisions the AWS prerequisites for [`/.github/workflows/acc-test.yml`](../../.
 
 - The GitHub Actions OIDC provider (`token.actions.githubusercontent.com`).
 - An IAM role the workflow assumes when running in `environment: acc-test`.
-- An inline policy on the role with the ECS / IAM / EC2 permissions the
-  bootstrap stack and acceptance test need.
+- A narrowly-scoped inline policy on the role: only ECS service and
+  task definition lifecycle against the `ecspresso-provider-acc-test`
+  cluster, `iam:PassRole` for the pre-provisioned task execution role,
+  EC2 read-only describes, and `s3:GetObject` on the bootstrap
+  tfstate. **No `iam:CreateRole`, `ecs:CreateCluster`, or
+  `ec2:CreateSecurityGroup`** — those are deliberately out of scope so
+  the role cannot escalate privileges or create new AWS resources.
 
-This is a one-time setup; once applied, the role keeps working for every
-acceptance test run.
+This is a one-time setup; once applied, the role keeps working for
+every acceptance test run.
+
+## Prerequisite
+
+The bootstrap stack (`../bootstrap/`) is applied first and its state
+lives in S3 (see `bootstrap/README.md` for the `-backend-config`
+flags). This stack needs to know the same bucket and key so it can
+grant the role `s3:GetObject` on the tfstate object.
 
 ## Run
 
 ```sh
 cd examples/acceptance/oidc
 terraform init
-terraform apply
+terraform apply \
+  -var tfstate_bucket=<your-tfstate-bucket> \
+  -var tfstate_key=terraform-provider-ecspresso/acceptance/bootstrap.tfstate
 ```
 
-Then copy the `role_arn` output and set it as `AWS_ROLE_ARN` under
-*Settings → Environments → `acc-test` → Environment variables* on the
-GitHub repository. (It's an ARN, not a secret — a variable is enough.)
+Then copy the `role_arn` output and set it on the GitHub repository:
+
+- *Settings → Environments → `acc-test` → Environment variables*:
+  - `AWS_ROLE_ARN` = the `role_arn` output above
+  - `TFSTATE_URL`  = `s3://<your-tfstate-bucket>/terraform-provider-ecspresso/acceptance/bootstrap.tfstate`
+
+Neither value is a secret (the role ARN is just an identifier; the S3
+URL only resolves with a successful OIDC assume), so variables — not
+secrets — are the right choice.
 
 ## Variables
 
@@ -28,6 +48,8 @@ GitHub repository. (It's an ARN, not a secret — a variable is enough.)
 |---|---|---|
 | `github_repo` | `fujiwara/terraform-provider-ecspresso` | Repo slug. Set to your fork if you cloned to a different namespace. |
 | `environment_name` | `acc-test` | GitHub Environment allowed to assume the role. Match the workflow's `environment:` value. |
+| `tfstate_bucket` | (required) | S3 bucket holding the bootstrap stack's tfstate object. |
+| `tfstate_key` | `terraform-provider-ecspresso/acceptance/bootstrap.tfstate` | S3 object key for the bootstrap stack's tfstate. |
 
 ## If the OIDC provider already exists
 
@@ -49,6 +71,3 @@ another repository), `terraform apply` will fail. Two ways out:
 ```sh
 terraform destroy
 ```
-
-Do this **after** `terraform destroy` on the bootstrap stack, so the
-role still has permission to clean those resources up.

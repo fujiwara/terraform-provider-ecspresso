@@ -29,6 +29,22 @@ variable "environment_name" {
   default     = "acc-test"
 }
 
+variable "tfstate_bucket" {
+  description = "S3 bucket holding the bootstrap stack's tfstate object."
+  type        = string
+}
+
+variable "tfstate_key" {
+  description = "S3 object key of the bootstrap stack's tfstate."
+  type        = string
+  default     = "terraform-provider-ecspresso/acceptance/bootstrap.tfstate"
+}
+
+locals {
+  cluster_name        = "ecspresso-provider-acc-test"
+  task_execution_role = "ecspresso-provider-acc-test-task-execution"
+}
+
 # GitHub Actions OIDC provider. AWS allows only one per account for a
 # given URL; see the README for how to handle the case where it already
 # exists (data lookup or terraform import).
@@ -72,66 +88,91 @@ resource "aws_iam_role" "github_acc_test" {
 }
 
 data "aws_iam_policy_document" "acc_test" {
-  # ECS: cluster + service + task definition lifecycle.
+  # ECS service lifecycle, scoped to the acceptance test cluster.
+  # ecspresso-provider-acc-test is the cluster the bootstrap stack
+  # creates; ecspresso only ever operates on it.
   statement {
     effect = "Allow"
     actions = [
-      "ecs:CreateCluster",
-      "ecs:DeleteCluster",
-      "ecs:DescribeClusters",
       "ecs:CreateService",
       "ecs:DescribeServices",
       "ecs:UpdateService",
       "ecs:DeleteService",
+    ]
+    resources = ["arn:aws:ecs:*:*:service/${local.cluster_name}/*"]
+  }
+
+  # Cluster describe is needed by ecspresso during deploy. Scoped
+  # to the acceptance test cluster only.
+  statement {
+    effect    = "Allow"
+    actions   = ["ecs:DescribeClusters"]
+    resources = ["arn:aws:ecs:*:*:cluster/${local.cluster_name}"]
+  }
+
+  # Task definition register / list cannot be resource-restricted; ECS
+  # only supports resource-level restrictions on describe / deregister.
+  statement {
+    effect = "Allow"
+    actions = [
       "ecs:RegisterTaskDefinition",
+      "ecs:ListTaskDefinitions",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
       "ecs:DescribeTaskDefinition",
       "ecs:DeregisterTaskDefinition",
-      "ecs:ListTaskDefinitions",
+    ]
+    resources = ["arn:aws:ecs:*:*:task-definition/${local.cluster_name}:*"]
+  }
+
+  statement {
+    effect = "Allow"
+    actions = [
       "ecs:TagResource",
       "ecs:UntagResource",
     ]
     resources = ["*"]
   }
 
-  # IAM: manage the task execution role the bootstrap stack creates,
-  # and PassRole it through to ECS at deploy time.
+  # IAM: only PassRole for the task execution role the bootstrap stack
+  # already provisioned, and only when ECS is the consumer. No
+  # CreateRole / AttachPolicy / etc. — the bootstrap is applied once
+  # out-of-band by a human and is not managed by this role.
   statement {
-    effect = "Allow"
-    actions = [
-      "iam:CreateRole",
-      "iam:DeleteRole",
-      "iam:GetRole",
-      "iam:PassRole",
-      "iam:AttachRolePolicy",
-      "iam:DetachRolePolicy",
-      "iam:ListAttachedRolePolicies",
-      "iam:ListRolePolicies",
-      "iam:ListInstanceProfilesForRole",
-      "iam:TagRole",
-      "iam:UntagRole",
-    ]
-    resources = ["*"]
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = ["arn:aws:iam::*:role/${local.task_execution_role}"]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
   }
 
-  # EC2: default-VPC lookup and security group CRUD.
+  # EC2 read-only: ecspresso resolves VPC / subnet / SG / ENI during
+  # deploy and verify.
   statement {
     effect = "Allow"
     actions = [
       "ec2:DescribeVpcs",
       "ec2:DescribeSubnets",
       "ec2:DescribeSecurityGroups",
-      "ec2:CreateSecurityGroup",
-      "ec2:DeleteSecurityGroup",
-      "ec2:AuthorizeSecurityGroupEgress",
-      "ec2:RevokeSecurityGroupEgress",
-      "ec2:AuthorizeSecurityGroupIngress",
-      "ec2:RevokeSecurityGroupIngress",
-      "ec2:CreateTags",
-      "ec2:DeleteTags",
-      "ec2:DescribeTags",
       "ec2:DescribeNetworkInterfaces",
     ]
     resources = ["*"]
+  }
+
+  # S3: read the bootstrap stack's tfstate so ecspresso's tfstate
+  # plugin can resolve the outputs (role ARN, subnet IDs, SG ID).
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::${var.tfstate_bucket}/${var.tfstate_key}"]
   }
 }
 

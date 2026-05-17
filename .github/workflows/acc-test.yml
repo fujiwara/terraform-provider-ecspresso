@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       region:
-        description: "AWS region to deploy the bootstrap stack into"
+        description: "AWS region of the pre-provisioned bootstrap stack"
         required: false
         type: string
         default: "ap-northeast-1"
@@ -12,14 +12,20 @@ permissions:
   id-token: write       # required by aws-actions/configure-aws-credentials (OIDC)
   contents: read
 
+# The bootstrap stack under examples/acceptance/bootstrap/ is assumed
+# to be apply'd once by a human and left in place — its standing cost
+# is zero (empty ECS cluster, IAM role, security group), and keeping
+# it around means this workflow only needs permission to create and
+# delete the ECS service itself. See examples/acceptance/oidc/ for the
+# IAM role definition.
 jobs:
   acc-test:
     runs-on: ubuntu-latest
     environment: acc-test
     env:
       AWS_REGION: ${{ inputs.region }}
-      TF_INPUT: "0"
-      TF_IN_AUTOMATION: "1"
+      TFSTATE_URL: ${{ vars.TFSTATE_URL }}
+      ECSPRESSO_TEST_CONFIG_PATH: ${{ github.workspace }}/examples/acceptance/ecspresso.jsonnet
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
 
@@ -28,29 +34,11 @@ jobs:
         with:
           go-version: "1.26"
 
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
-        with:
-          terraform_wrapper: false
-
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: terraform apply (bootstrap)
-        working-directory: examples/acceptance/bootstrap
-        run: |
-          terraform init
-          terraform apply -auto-approve
-
       - name: make acc-test
-        env:
-          ECSPRESSO_TEST_CONFIG_PATH: ${{ github.workspace }}/examples/acceptance/ecspresso.jsonnet
         run: make acc-test
-
-      - name: terraform destroy (cleanup)
-        if: always()
-        working-directory: examples/acceptance/bootstrap
-        run: terraform destroy -auto-approve
