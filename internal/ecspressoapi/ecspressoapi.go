@@ -25,16 +25,37 @@ type ServiceInfo struct {
 	ClusterName string
 }
 
-// Deploy invokes ecspresso deploy and returns the post-deploy service
-// info. tfstateOverrides are applied to the tfstate plugin whose
-// func_prefix matches tfstateFuncPrefix ("" targets the default plugin).
-// A nil or empty map skips override application.
-func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) (*ServiceInfo, error) {
+// Deploy invokes ecspresso deploy only when there is a real diff
+// between the locally-rendered definitions and what is currently
+// deployed. The `deployed` return is true when ecspresso.App.Deploy
+// was actually called and false when it was skipped because
+// ecspresso.App.HasDiff returned no diff. tfstateOverrides are
+// applied to the tfstate plugin identified by tfstateFuncPrefix
+// before the diff is computed, so the comparison sees the same
+// rendered definitions a real deploy would.
+func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) (info *ServiceInfo, deployed bool, err error) {
 	app, err := newApp(ctx, configPath)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	configureTFStatePlugin(app, tfstateFuncPrefix, tfstateOverrides)
+
+	hasDiff, err := app.HasDiff(ctx, ecspresso.DiffOption{
+		Unified:     true,
+		WithService: true,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if !hasDiff {
+		// No-op against AWS: the rendered configs already match the
+		// deployed state. Return the current service info so the
+		// caller can update computed attributes without claiming a
+		// new deploy happened.
+		info, err = describe(ctx, app)
+		return info, false, err
+	}
+
 	if err := app.Deploy(ctx, ecspresso.DeployOption{
 		Wait:          true,
 		UpdateService: true,
@@ -47,9 +68,10 @@ func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tf
 		// request with "DesiredCount is missing".
 		DesiredCount: aws.Int32(ecspresso.DefaultDesiredCount),
 	}); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return describe(ctx, app)
+	info, err = describe(ctx, app)
+	return info, true, err
 }
 
 // Describe returns the current service info without deploying. tfstate
