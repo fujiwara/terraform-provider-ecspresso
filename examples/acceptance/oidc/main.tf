@@ -112,23 +112,26 @@ data "aws_iam_policy_document" "acc_test" {
     resources = ["arn:aws:ecs:*:*:cluster/${local.cluster_name}"]
   }
 
-  # Task definition register / list cannot be resource-restricted; ECS
-  # only supports resource-level restrictions on describe / deregister.
+  # Task definition register / list / describe cannot be
+  # resource-restricted in practice: ECS evaluates these against
+  # resource `*` even when the request targets a specific family.
+  # DescribeTaskDefinition is reached during ecspresso's diff against
+  # the latest revision in the family.
   statement {
     effect = "Allow"
     actions = [
       "ecs:RegisterTaskDefinition",
       "ecs:ListTaskDefinitions",
+      "ecs:DescribeTaskDefinition",
     ]
     resources = ["*"]
   }
 
+  # Deregister is a write action and does support resource-level
+  # scoping by family.
   statement {
-    effect = "Allow"
-    actions = [
-      "ecs:DescribeTaskDefinition",
-      "ecs:DeregisterTaskDefinition",
-    ]
+    effect    = "Allow"
+    actions   = ["ecs:DeregisterTaskDefinition"]
     resources = ["arn:aws:ecs:*:*:task-definition/${local.cluster_name}:*"]
   }
 
@@ -165,6 +168,21 @@ data "aws_iam_policy_document" "acc_test" {
       "ec2:DescribeSubnets",
       "ec2:DescribeSecurityGroups",
       "ec2:DescribeNetworkInterfaces",
+    ]
+    resources = ["*"]
+  }
+
+  # Application Auto Scaling describes: ecspresso queries them during
+  # service describe / delete to surface any attached scalable targets
+  # and policies. The fixture doesn't actually configure autoscaling,
+  # but without these the describe path logs a warning. Application
+  # Auto Scaling describes don't usefully resource-scope (the unique
+  # id in the ARN is autoscaling-internal).
+  statement {
+    effect = "Allow"
+    actions = [
+      "application-autoscaling:DescribeScalableTargets",
+      "application-autoscaling:DescribeScalingPolicies",
     ]
     resources = ["*"]
   }
