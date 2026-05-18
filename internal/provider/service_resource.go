@@ -51,6 +51,7 @@ type serviceResourceModel struct {
 	ClusterArn        types.String  `tfsdk:"cluster_arn"`
 	ClusterName       types.String  `tfsdk:"cluster_name"`
 	LastApplyAt       types.String  `tfsdk:"last_apply_at"`
+	EcspressoVersion  types.String  `tfsdk:"ecspresso_version"`
 }
 
 func (r *serviceResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -130,6 +131,10 @@ func (r *serviceResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"last_apply_at": schema.StringAttribute{
 				Description: "RFC3339 timestamp of the most recent `terraform apply` that actually invoked `ecspresso deploy` for this resource. This is the time on the Terraform side (the host where `terraform apply` ran), **not** the AWS-side deployment time — use `data \"aws_ecs_service\"` for live AWS-side state. In a `terraform plan`, a value of `(known after apply)` means the next apply may run `ecspresso deploy`; whether it actually does depends on ecspresso's diff against AWS. If the rendered definitions already match AWS, the deploy is skipped and the previous timestamp is preserved.",
+				Computed:    true,
+			},
+			"ecspresso_version": schema.StringAttribute{
+				Description: "Version of the ecspresso library this provider was built against. Refreshed on every apply, so a provider upgrade that swaps in a newer ecspresso shows up as a diff here. Changing this value never triggers a redeploy on its own.",
 				Computed:    true,
 			},
 			// task_definition_* are intentionally not exposed. They
@@ -272,6 +277,11 @@ func (r *serviceResource) ModifyPlan(ctx context.Context, req resource.ModifyPla
 	} else {
 		plan.LastApplyAt = state.LastApplyAt
 	}
+	// ecspresso_version is known at plan time — it comes from the
+	// provider binary, not from AWS. Setting it here surfaces any
+	// upcoming version change as a plain attribute diff instead of
+	// "(known after apply)".
+	plan.EcspressoVersion = types.StringValue(ecspressoapi.Version())
 	resp.Diagnostics.Append(resp.Plan.Set(ctx, &plan)...)
 }
 
@@ -416,10 +426,12 @@ func attrValueMap(elems map[string]attr.Value) (map[string]any, error) {
 	return out, nil
 }
 
-// setComputedFromInfo writes the eight Computed attributes directly into
-// resp.State via SetAttribute. This preserves the surrounding raw state
-// (and its sensitivity markers on tfstate_values) that the caller already
-// copied from req.Plan / req.State.
+// setComputedFromInfo writes the Computed attributes that mirror AWS-
+// side state directly into resp.State via SetAttribute. It also writes
+// ecspresso_version, which is sourced from the linked ecspresso library
+// rather than AWS. This preserves the surrounding raw state (and its
+// sensitivity markers on tfstate_values) that the caller already copied
+// from req.Plan / req.State.
 func setComputedFromInfo(ctx context.Context, state *tfsdk.State, info *ecspressoapi.ServiceInfo) diag.Diagnostics {
 	var diags diag.Diagnostics
 	id := info.ClusterName + "/" + info.ServiceName
@@ -428,5 +440,6 @@ func setComputedFromInfo(ctx context.Context, state *tfsdk.State, info *ecspress
 	diags.Append(state.SetAttribute(ctx, path.Root("service_name"), info.ServiceName)...)
 	diags.Append(state.SetAttribute(ctx, path.Root("cluster_arn"), info.ClusterArn)...)
 	diags.Append(state.SetAttribute(ctx, path.Root("cluster_name"), info.ClusterName)...)
+	diags.Append(state.SetAttribute(ctx, path.Root("ecspresso_version"), ecspressoapi.Version())...)
 	return diags
 }

@@ -2,11 +2,14 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+
+	"github.com/fujiwara/terraform-provider-ecspresso/internal/ecspressoapi"
 )
 
 var _ provider.Provider = (*ecspressoProvider)(nil)
@@ -31,8 +34,11 @@ func (p *ecspressoProvider) Metadata(_ context.Context, _ provider.MetadataReque
 
 func (p *ecspressoProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Configure the ecspresso provider. The provider currently has no top-level configuration; all configuration lives on the resource.",
-		Attributes:  map[string]schema.Attribute{},
+		MarkdownDescription: fmt.Sprintf(
+			"Configure the ecspresso provider. The provider currently has no top-level configuration; all configuration lives on the resource.\n\nThis build includes [ecspresso](https://github.com/kayac/ecspresso) `%s`.",
+			ecspressoapi.Version(),
+		),
+		Attributes: map[string]schema.Attribute{},
 	}
 }
 

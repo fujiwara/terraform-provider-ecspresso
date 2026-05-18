@@ -59,6 +59,7 @@ Run `terraform apply`. Set AWS credentials and any `{{ env "FOO" }}` / `{{ must_
 | `id` | `<cluster>/<service>` |
 | `service_arn`, `service_name`, `cluster_arn`, `cluster_name` | ECS identifiers. |
 | `last_apply_at` | RFC3339 timestamp of the last apply that actually ran `ecspresso deploy`. In `plan`, `(known after apply)` means the next apply *may* redeploy — whether it actually does depends on ecspresso's diff against AWS. |
+| `ecspresso_version` | Version of the ecspresso library bundled into this provider build. A provider upgrade that ships a newer ecspresso shows up here as a plain attribute diff and never triggers a redeploy on its own. The same string is shown on the [Registry provider page](https://registry.terraform.io/providers/fujiwara/ecspresso/latest). |
 
 Task definition identity (`arn` / `family` / `revision`) and other live AWS-side details are intentionally not exposed — see Notes for how to get them.
 

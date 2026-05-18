@@ -3,11 +3,14 @@
 page_title: "ecspresso Provider"
 description: |-
   Configure the ecspresso provider. The provider currently has no top-level configuration; all configuration lives on the resource.
+  This build includes ecspresso https://github.com/kayac/ecspresso v2.8.4.
 ---
 
 # ecspresso Provider
 
 Configure the ecspresso provider. The provider currently has no top-level configuration; all configuration lives on the resource.
+
+This build includes [ecspresso](https://github.com/kayac/ecspresso) `v2.8.4`.
 
 ## Example Usage
 
