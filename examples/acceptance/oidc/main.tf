@@ -112,23 +112,26 @@ data "aws_iam_policy_document" "acc_test" {
     resources = ["arn:aws:ecs:*:*:cluster/${local.cluster_name}"]
   }
 
-  # Task definition register / list cannot be resource-restricted; ECS
-  # only supports resource-level restrictions on describe / deregister.
+  # Task definition register / list / describe cannot be
+  # resource-restricted in practice: ECS evaluates these against
+  # resource `*` even when the request targets a specific family.
+  # DescribeTaskDefinition is reached during ecspresso's diff against
+  # the latest revision in the family.
   statement {
     effect = "Allow"
     actions = [
       "ecs:RegisterTaskDefinition",
       "ecs:ListTaskDefinitions",
+      "ecs:DescribeTaskDefinition",
     ]
     resources = ["*"]
   }
 
+  # Deregister is a write action and does support resource-level
+  # scoping by family.
   statement {
-    effect = "Allow"
-    actions = [
-      "ecs:DescribeTaskDefinition",
-      "ecs:DeregisterTaskDefinition",
-    ]
+    effect    = "Allow"
+    actions   = ["ecs:DeregisterTaskDefinition"]
     resources = ["arn:aws:ecs:*:*:task-definition/${local.cluster_name}:*"]
   }
 
