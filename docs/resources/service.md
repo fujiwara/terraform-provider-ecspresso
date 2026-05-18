@@ -41,7 +41,8 @@ resource "ecspresso_service" "app" {
 
 - `cluster_arn` (String) ARN of the ECS cluster.
 - `cluster_name` (String) Name of the ECS cluster.
+- `ecspresso_version` (String) Version of the ecspresso library this provider was built against. Refreshed on every apply, so a provider upgrade that swaps in a newer ecspresso shows up as a diff here. Changing this value never triggers a redeploy on its own.
 - `id` (String) Synthetic ID in the form `<cluster>/<service>`.
-- `last_apply_at` (String) RFC3339 timestamp of the most recent `terraform apply` that invoked `ecspresso deploy` for this resource. This is the time on the Terraform side (the host where `terraform apply` ran), **not** the AWS-side deployment time — use `data "aws_ecs_service"` for live AWS-side state. In a `terraform plan`, a value of `(known after apply)` indicates the next apply will run `ecspresso deploy`; the timestamp staying unchanged indicates the apply will only update Terraform state (e.g. when only `destroy_action` changed).
+- `last_apply_at` (String) RFC3339 timestamp of the most recent `terraform apply` that actually invoked `ecspresso deploy` for this resource. This is the time on the Terraform side (the host where `terraform apply` ran), **not** the AWS-side deployment time — use `data "aws_ecs_service"` for live AWS-side state. In a `terraform plan`, a value of `(known after apply)` means the next apply may run `ecspresso deploy`; whether it actually does depends on ecspresso's diff against AWS. If the rendered definitions already match AWS, the deploy is skipped and the previous timestamp is preserved.
 - `service_arn` (String) ARN of the ECS service.
 - `service_name` (String) Name of the ECS service.
