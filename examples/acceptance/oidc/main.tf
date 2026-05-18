@@ -172,6 +172,21 @@ data "aws_iam_policy_document" "acc_test" {
     resources = ["*"]
   }
 
+  # Application Auto Scaling describes: ecspresso queries them during
+  # service describe / delete to surface any attached scalable targets
+  # and policies. The fixture doesn't actually configure autoscaling,
+  # but without these the describe path logs a warning. Application
+  # Auto Scaling describes don't usefully resource-scope (the unique
+  # id in the ARN is autoscaling-internal).
+  statement {
+    effect = "Allow"
+    actions = [
+      "application-autoscaling:DescribeScalableTargets",
+      "application-autoscaling:DescribeScalingPolicies",
+    ]
+    resources = ["*"]
+  }
+
   # S3: read the bootstrap stack's tfstate so ecspresso's tfstate
   # plugin can resolve the outputs (role ARN, subnet IDs, SG ID).
   statement {
