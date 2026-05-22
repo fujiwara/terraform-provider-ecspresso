@@ -9,7 +9,7 @@ require (
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/hashicorp/terraform-plugin-go v0.31.0
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
-	github.com/kayac/ecspresso/v2 v2.8.5-0.20260518123627-9c0bba6c5734
+	github.com/kayac/ecspresso/v2 v2.8.5-0.20260520135332-49a4de33506a
 )
 
 require (

@@ -41,7 +41,6 @@ func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tf
 	configureTFStatePlugin(app, tfstateFuncPrefix, tfstateOverrides)
 
 	hasDiff, err := app.HasDiff(ctx, ecspresso.DiffOption{
-		Unified:     true,
 		WithService: true,
 	})
 	if err != nil {
@@ -129,8 +128,7 @@ func configureTFStatePlugin(app *ecspresso.App, funcPrefix string, overrides map
 // IsNotFound reports whether err indicates the ECS service does not exist.
 // Used by Read to decide whether to remove the resource from Terraform state.
 func IsNotFound(err error) bool {
-	var nf ecspresso.ErrNotFound
-	return errors.As(err, &nf)
+	return errors.Is(err, ecspresso.ErrNotFound)
 }
 
 func newApp(ctx context.Context, configPath string) (*ecspresso.App, error) {
