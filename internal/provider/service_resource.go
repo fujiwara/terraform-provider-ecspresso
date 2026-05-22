@@ -192,7 +192,11 @@ func (r *serviceResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	info, err := ecspressoapi.Describe(ctx, state.ConfigPath.ValueString())
+	tfstateOverrides := tfstateOverridesFromPlan(ctx, state, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	info, err := ecspressoapi.Describe(ctx, state.ConfigPath.ValueString(), state.TFStateFuncPrefix.ValueString(), tfstateOverrides)
 	if err != nil {
 		if ecspressoapi.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)

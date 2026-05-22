@@ -29,17 +29,7 @@ resource "ecspresso_service" "app" {
 }
 ```
 
-`ecspresso.yml` needs a `tfstate` plugin. Add `optional: true` for the **first** `terraform apply`, then remove it:
-
-```yaml
-plugins:
-  - name: tfstate
-    config:
-      url: s3://my-bucket/path/to/terraform.tfstate
-      optional: true   # bootstrap only — delete after the first apply (see Notes)
-```
-
-Run `terraform apply`. Set AWS credentials and any `{{ env "FOO" }}` / `{{ must_env "FOO" }}` vars `ecspresso.yml` reads in the shell that runs `terraform apply`, the same way you would for `ecspresso deploy`.
+Run `terraform apply`. Set AWS credentials and any `{{ env "FOO" }}` / `{{ must_env "FOO" }}` vars `ecspresso.yml` reads in the shell that runs `terraform apply`, the same way you would for `ecspresso deploy`. The provider injects an in-memory tfstate plugin backed by `tfstate_values`, so a `plugins:` block in `ecspresso.yml` is not required when the only consumer is this provider; if one is present (e.g. for shared CLI use), the provider's overrides take over and the on-disk / S3 tfstate is never read.
 
 ## `ecspresso_service` reference
 
@@ -87,13 +77,7 @@ Relative paths are resolved against the **working directory of the `terraform` p
 
 Keys are tfstate addresses (e.g. `"aws_iam_role.task"`, `"output.foo"`), values can be any Terraform type. Nested paths like `tfstate('aws_iam_role.task.arn')` resolve through the same map.
 
-**`tfstate_values` is the complete input set when running through this provider.** The provider discards the tfstate plugin's scanned data and serves lookups from `tfstate_values` only; missing keys fail the apply with `is not found in tfstate`. By design — scanned-state fallback would let Terraform-unaware changes leak into a deploy. The same `ecspresso.yml` still works from the CLI (which reads the on-disk / S3 tfstate normally).
-
-### `optional: true` is bootstrap-only
-
-The Terraform backend has not yet written the state object on the first apply, so without `optional: true` the tfstate plugin's initial load fails with 404 / file not found before the provider can push `tfstate_values`. With `optional: true` ecspresso logs a warning and continues with an empty state; the overrides take over.
-
-**Remove the flag after the first successful apply.** Leaving it on hurts the CLI side: a typo in `path` / `url` silently falls back to empty instead of failing clearly on the configured URL.
+**`tfstate_values` is the complete input set when running through this provider.** The provider hands ecspresso an in-memory tfstate backed by `tfstate_values` only — the on-disk / S3 tfstate referenced by any `plugins:` entry is never read in provider mode. Missing keys fail the apply with `is not found in tfstate`. By design — scanned-state fallback would let Terraform-unaware changes leak into a deploy. The same `ecspresso.yml` still works from the CLI (which reads the on-disk / S3 tfstate normally because the CLI path doesn't inject anything).
 
 ### `last_apply_at` is a Terraform-side timestamp
 
