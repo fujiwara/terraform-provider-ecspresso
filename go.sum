@@ -345,6 +345,8 @@ github.com/jmespath/go-jmespath v0.4.0/go.mod h1:T8mJZnbsbmF+m6zOOFylbeCJqk5+pHW
 github.com/jmespath/go-jmespath/internal/testify v1.5.1/go.mod h1:L3OGu8Wl2/fWfCI6z80xFu9LTZmf1ZRjMHUOPmWr69U=
 github.com/kayac/ecspresso/v2 v2.8.5-0.20260520135332-49a4de33506a h1:Bx5oQBP4S+gk+Iu+s3ZMPE+R1QraiscSxC3/7/t3+a8=
 github.com/kayac/ecspresso/v2 v2.8.5-0.20260520135332-49a4de33506a/go.mod h1:d2bVVCInZ+ZRqc4J9v7BAlbDY7RGxWbJK7uXVQdLcwQ=
+github.com/kayac/ecspresso/v2 v2.8.5-0.20260522161655-850dffb1b59e h1:MgC9qR//329O1CFzNqUGMwg1cVqgHS09HquTlOSVz/o=
+github.com/kayac/ecspresso/v2 v2.8.5-0.20260522161655-850dffb1b59e/go.mod h1:d2bVVCInZ+ZRqc4J9v7BAlbDY7RGxWbJK7uXVQdLcwQ=
 github.com/kayac/go-config v0.7.0 h1:BeONaFFq/ILFiEzkCMpKarsjcc3YBgJ7QKg39hXU+nk=
 github.com/kayac/go-config v0.7.0/go.mod h1:Nfkw4LZOh/7HGepftBvD2lKEpPyl1Vp89yA7gDJS5r0=
 github.com/kevinburke/ssh_config v1.2.0 h1:x584FjTGwHzMwvHx18PXxbBVzfnxogHaAReU4gf13a4=

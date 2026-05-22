@@ -1,7 +1,7 @@
 // Package ecspressoapi is a thin wrapper around github.com/kayac/ecspresso/v2.
 // It exists so the provider package depends on a stable, small surface area
 // rather than ecspresso's entire public API, and so the tfstate-plugin
-// injection point (Phase 5) can be added in one place.
+// injection point can be expressed in one place.
 package ecspressoapi
 
 import (
@@ -29,16 +29,14 @@ type ServiceInfo struct {
 // between the locally-rendered definitions and what is currently
 // deployed. The `deployed` return is true when ecspresso.App.Deploy
 // was actually called and false when it was skipped because
-// ecspresso.App.HasDiff returned no diff. tfstateOverrides are
-// applied to the tfstate plugin identified by tfstateFuncPrefix
-// before the diff is computed, so the comparison sees the same
-// rendered definitions a real deploy would.
+// ecspresso.App.HasDiff returned no diff. tfstateOverrides drive
+// every `tfstate(...)` lookup in the config (including config-level
+// fields like `cluster`) — see newApp.
 func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) (info *ServiceInfo, deployed bool, err error) {
-	app, err := newApp(ctx, configPath)
+	app, err := newApp(ctx, configPath, tfstateFuncPrefix, tfstateOverrides)
 	if err != nil {
 		return nil, false, err
 	}
-	configureTFStatePlugin(app, tfstateFuncPrefix, tfstateOverrides)
 
 	hasDiff, err := app.HasDiff(ctx, ecspresso.DiffOption{
 		WithService: true,
@@ -73,11 +71,12 @@ func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tf
 	return info, true, err
 }
 
-// Describe returns the current service info without deploying. tfstate
-// overrides are not required because DescribeService does not re-render
-// the task/service definition templates.
-func Describe(ctx context.Context, configPath string) (*ServiceInfo, error) {
-	app, err := newApp(ctx, configPath)
+// Describe returns the current service info without deploying.
+// tfstateOverrides are still required because the ecspresso config may
+// reference `tfstate(...)` for top-level fields like `cluster` /
+// `service` (resolved during config load).
+func Describe(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) (*ServiceInfo, error) {
+	app, err := newApp(ctx, configPath, tfstateFuncPrefix, tfstateOverrides)
 	if err != nil {
 		return nil, err
 	}
@@ -86,43 +85,18 @@ func Describe(ctx context.Context, configPath string) (*ServiceInfo, error) {
 
 // Delete runs ecspresso delete with Force (skip prompt) and Terminate
 // (DeleteService force=true, i.e. scale-to-zero + drain + delete).
-// tfstateOverrides are forwarded so any plugin-rendered config the
-// delete path may read still resolves correctly.
+// tfstateOverrides are forwarded so config-level and definition-level
+// `tfstate(...)` lookups all resolve from the same Terraform-managed
+// source.
 func Delete(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) error {
-	app, err := newApp(ctx, configPath)
+	app, err := newApp(ctx, configPath, tfstateFuncPrefix, tfstateOverrides)
 	if err != nil {
 		return err
 	}
-	configureTFStatePlugin(app, tfstateFuncPrefix, tfstateOverrides)
 	return app.Delete(ctx, ecspresso.DeleteOption{
 		Force:     true,
 		Terminate: true,
 	})
-}
-
-// configureTFStatePlugin pushes the caller-supplied overrides into
-// the tfstate plugin identified by funcPrefix and then discards the
-// scanned tfstate so Lookup serves keys from those overrides only.
-//
-// The provider's design treats `tfstate_values` as the complete set
-// of tfstate-shaped inputs to ecspresso; resolving a missing key
-// from a possibly-stale tfstate file would let Terraform-unaware
-// changes leak into a deploy. After this call, ecspresso's
-// `tfstate(...)` lookups against any key not present in
-// `tfstate_values` fail fast with "is not found in tfstate", which
-// is exactly the early signal we want.
-//
-// No-op when no matching tfstate plugin is configured (ecspresso.yml
-// may legitimately have no tfstate plugin at all).
-func configureTFStatePlugin(app *ecspresso.App, funcPrefix string, overrides map[string]any) {
-	state, ok := app.PluginInstance("tfstate", funcPrefix).(*tfstate.TFState)
-	if !ok {
-		return
-	}
-	if len(overrides) > 0 {
-		state.SetOverrides(overrides)
-	}
-	state.DiscardScannedState()
 }
 
 // IsNotFound reports whether err indicates the ECS service does not exist.
@@ -131,11 +105,29 @@ func IsNotFound(err error) bool {
 	return errors.Is(err, ecspresso.ErrNotFound)
 }
 
-func newApp(ctx context.Context, configPath string) (*ecspresso.App, error) {
+// newApp constructs an ecspresso App with an in-memory tfstate plugin
+// instance pre-populated from tfstateOverrides. ecspresso.New then
+// skips the configured tfstate plugin's Setup (no on-disk tfstate
+// file read, no scanned state) and resolves every `tfstate(...)`
+// lookup — at the config level and inside task / service definitions
+// — from the override map only.
+//
+// The provider's design treats `tfstate_values` as the complete set
+// of tfstate-shaped inputs to ecspresso; resolving a missing key from
+// a possibly-stale tfstate file would let Terraform-unaware changes
+// leak into a deploy. With an in-memory backing, missing keys fail
+// fast with "is not found in tfstate" — the early signal we want.
+func newApp(ctx context.Context, configPath, tfstateFuncPrefix string, overrides map[string]any) (*ecspresso.App, error) {
+	state := tfstate.Empty()
+	if len(overrides) > 0 {
+		state.SetOverrides(overrides)
+	}
 	cliOpts := &ecspresso.CLIOptions{
 		ConfigFilePath: configPath,
 	}
-	return ecspresso.New(ctx, cliOpts)
+	return ecspresso.New(ctx, cliOpts,
+		ecspresso.WithPluginInstance("tfstate", tfstateFuncPrefix, state),
+	)
 }
 
 func describe(ctx context.Context, app *ecspresso.App) (*ServiceInfo, error) {
