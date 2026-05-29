@@ -160,7 +160,8 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	info, deployed, err := ecspressoapi.Deploy(ctx, plan.ConfigPath.ValueString(), plan.TFStateFuncPrefix.ValueString(), tfstateOverrides)
+	info, deployed, warnings, err := ecspressoapi.Deploy(ctx, plan.ConfigPath.ValueString(), plan.TFStateFuncPrefix.ValueString(), tfstateOverrides)
+	addTFStatePrefixWarnings(&resp.Diagnostics, warnings)
 	if err != nil {
 		resp.Diagnostics.AddError("ecspresso deploy failed", err.Error())
 		return
@@ -238,7 +239,8 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	info, deployed, err := ecspressoapi.Deploy(ctx, plan.ConfigPath.ValueString(), plan.TFStateFuncPrefix.ValueString(), tfstateOverrides)
+	info, deployed, warnings, err := ecspressoapi.Deploy(ctx, plan.ConfigPath.ValueString(), plan.TFStateFuncPrefix.ValueString(), tfstateOverrides)
+	addTFStatePrefixWarnings(&resp.Diagnostics, warnings)
 	if err != nil {
 		resp.Diagnostics.AddError("ecspresso deploy failed", err.Error())
 		return
@@ -301,6 +303,16 @@ var nowTimestamp = func() string {
 func updateNeedsDeploy(plan, state serviceResourceModel) bool {
 	return !plan.TFStateValues.Equal(state.TFStateValues) ||
 		!plan.TFStateFuncPrefix.Equal(state.TFStateFuncPrefix)
+}
+
+// addTFStatePrefixWarnings surfaces the advisories ecspressoapi.Deploy
+// returns (currently the tfstate_func_prefix / config mismatch) as
+// Terraform warning diagnostics so a likely-misrouted tfstate_values is
+// visible at apply time instead of failing silently.
+func addTFStatePrefixWarnings(diags *diag.Diagnostics, warnings []string) {
+	for _, w := range warnings {
+		diags.AddWarning("tfstate_func_prefix may not match the ecspresso config", w)
+	}
 }
 
 func (r *serviceResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {

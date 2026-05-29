@@ -77,7 +77,9 @@ Relative paths are resolved against the **working directory of the `terraform` p
 
 Keys are tfstate addresses (e.g. `"aws_iam_role.task"`, `"output.foo"`), values can be any Terraform type. Nested paths like `tfstate('aws_iam_role.task.arn')` resolve through the same map.
 
-**`tfstate_values` is the complete input set when running through this provider.** The provider hands ecspresso an in-memory tfstate backed by `tfstate_values` only — the on-disk / S3 tfstate referenced by any `plugins:` entry is never read in provider mode. Missing keys fail the apply with `is not found in tfstate`. By design — scanned-state fallback would let Terraform-unaware changes leak into a deploy. The same `ecspresso.yml` still works from the CLI (which reads the on-disk / S3 tfstate normally because the CLI path doesn't inject anything).
+**`tfstate_values` is the complete input set when running through this provider.** The provider hands ecspresso an in-memory tfstate backed by `tfstate_values` only — the on-disk / S3 tfstate of the *targeted* tfstate plugin is never read in provider mode. Missing keys fail the apply with `is not found in tfstate`. By design — scanned-state fallback would let Terraform-unaware changes leak into a deploy. The same `ecspresso.yml` still works from the CLI (which reads the on-disk / S3 tfstate normally because the CLI path doesn't inject anything).
+
+The provider injects into exactly one tfstate plugin, selected by `tfstate_func_prefix` (default `""`). If `ecspresso.yml` declares **multiple** tfstate plugins, only the one whose `func_prefix` matches is fed from `tfstate_values`; the others run normally and read their own source (e.g. a shared network tfstate from S3). If `tfstate_func_prefix` matches *no* declared tfstate plugin while others are declared, the apply emits a warning — those lookups would silently read from a file instead of `tfstate_values`, the usual sign of a mis-set prefix.
 
 ### `last_apply_at` is a Terraform-side timestamp
 

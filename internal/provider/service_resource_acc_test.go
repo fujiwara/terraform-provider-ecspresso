@@ -23,9 +23,10 @@ import (
 //	TFSTATE_URL                 URL of the bootstrap stack's tfstate;
 //	                            the test reads it to populate
 //	                            tfstate_values for the resource under
-//	                            test (the provider itself ignores the
-//	                            tfstate plugin's scanned data — see
-//	                            configureTFStatePlugin in ecspressoapi).
+//	                            test (the provider injects an in-memory
+//	                            tfstate plugin built from tfstate_values
+//	                            and never reads on-disk / S3 state — see
+//	                            newApp in ecspressoapi).
 //
 // The test is skipped when the fixture is not configured so this file
 // stays compatible with `go test ./...` on a developer machine that
@@ -41,6 +42,7 @@ func TestAccEcspressoService_basic(t *testing.T) {
 	}
 
 	tfstateValuesHCL, err := loadBootstrapTFStateValues(tfstateURL,
+		"output.cluster_name",
 		"output.task_execution_role_arn",
 		"output.subnet_ids",
 		"output.security_group_id",

@@ -1,30 +1,22 @@
 // Acceptance test config for terraform-provider-ecspresso.
 // Driven by `make acc-test`. The bootstrap stack
 // (`bootstrap/main.tf`) is expected to be apply'd once and left in
-// place; its tfstate is read from S3 here.
+// place.
 //
-// Note: ecspresso config files cannot use the `tfstate` Jsonnet
-// function — the plugin itself is declared here and is not yet
-// initialised when the config is parsed. `cluster` / `service` are
-// therefore hardcoded to match `bootstrap/main.tf`. The task and
-// service definitions can use `tfstate(...)` because they are
-// rendered after the plugin is set up.
+// The provider injects an in-memory tfstate plugin backed by
+// `tfstate_values` (ecspresso's WithPluginInstance,
+// kayac/ecspresso#1031), so no `plugins:` block is needed and even
+// config-level fields can use `tfstate(...)`. `cluster` is therefore
+// resolved from the bootstrap stack's `output.cluster_name` to
+// exercise that path; `service` is the name this test creates (the
+// bootstrap stack does not), so it stays a plain literal.
 local must_env = std.native('must_env');
+local tfstate = std.native('tfstate');
 
 {
   region: must_env('AWS_REGION'),
-  cluster: 'ecspresso-provider-acc-test',
+  cluster: tfstate('output.cluster_name'),
   service: 'ecspresso-provider-acc-test',
   service_definition: 'service_def.jsonnet',
   task_definition: 'taskdef.jsonnet',
-  plugins: [
-    {
-      name: 'tfstate',
-      config: {
-        // The bootstrap stack stores its state in S3; set TFSTATE_URL
-        // to that object's URL (e.g. s3://my-bucket/path/to/bootstrap.tfstate).
-        url: must_env('TFSTATE_URL'),
-      },
-    },
-  ],
 }
