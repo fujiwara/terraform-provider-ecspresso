@@ -26,17 +26,11 @@ type ServiceInfo struct {
 	ClusterName string
 }
 
-// Deploy invokes ecspresso deploy only when there is a real diff
-// between the locally-rendered definitions and what is currently
-// deployed. The `deployed` return is true when ecspresso.App.Deploy
-// was actually called and false when it was skipped because
-// ecspresso.App.HasDiff returned no diff. tfstateOverrides drive
-// every `tfstate(...)` lookup in the config (including config-level
-// fields like `cluster`) — see newApp.
-//
-// warnings carries non-fatal advisories the caller should surface to
-// the user — currently a tfstate_func_prefix / config mismatch (see
-// funcPrefixWarning).
+// Deploy invokes ecspresso deploy only when App.HasDiff reports a real
+// diff against AWS; deployed is true only when App.Deploy actually ran.
+// tfstateOverrides drive every tfstate(...) lookup (see newApp). warnings
+// holds non-fatal advisories to surface — currently a func_prefix mismatch
+// (see funcPrefixWarning).
 func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) (info *ServiceInfo, deployed bool, warnings []string, err error) {
 	app, err := newApp(ctx, configPath, tfstateFuncPrefix, tfstateOverrides)
 	if err != nil {
@@ -113,16 +107,11 @@ func IsNotFound(err error) bool {
 	return errors.Is(err, ecspresso.ErrNotFound)
 }
 
-// ConfigLoadError wraps a failure to construct the ecspresso App, i.e.
-// loading and rendering the config file — including resolving every
-// config-level tfstate(...) lookup from tfstate_values. It is kept
-// distinct from an AWS API error returned later (by DescribeService /
-// Deploy) so that Read can treat an unrenderable config as a skippable
-// refresh rather than a hard plan failure. This matters when the
-// committed tfstate_values are stale relative to a pending config /
-// tfstate_values change — e.g. a config-level tfstate(...) reference to
-// a resource that does not exist in state yet because it is created in
-// the same apply.
+// ConfigLoadError wraps a failure to construct the App (loading/rendering
+// the config, including config-level tfstate(...) lookups). Kept distinct
+// from a later AWS API error so Read can skip the refresh instead of
+// failing the plan when committed tfstate_values lag a pending change
+// (e.g. a reference to a resource created in the same apply).
 type ConfigLoadError struct{ err error }
 
 func (e *ConfigLoadError) Error() string { return e.err.Error() }
@@ -135,26 +124,13 @@ func IsConfigLoadError(err error) bool {
 	return errors.As(err, &c)
 }
 
-// funcPrefixWarning detects the silent footgun where tfstate_values is
-// injected at one func_prefix but the ecspresso config's tfstate
-// plugins use different ones. The provider injects a single in-memory
-// tfstate instance keyed by tfstateFuncPrefix; that prefix's
-// `tfstate(...)` lookups resolve from tfstate_values while every other
-// declared tfstate plugin reads its own on-disk / S3 state during
-// Setup. If the injected prefix matches no declared plugin, the
-// values the user passed silently never reach the lookups they
-// expected — instead those lookups read from a (possibly stale) file,
-// which is exactly the Terraform-unaware leak the provider's design
-// avoids.
-//
-// It returns "" (no warning) when the config declares no tfstate
-// plugin at all — that is the intended plugins-less mode enabled by
-// kayac/ecspresso#1031, where the injected instance is the only
-// source. It only warns when tfstate plugins ARE declared yet none
-// matches the injected prefix, since that is the classic
-// tfstate_func_prefix typo. Because a declared plugin for a different
-// prefix may be a deliberate "read this other tfstate from a file"
-// setup, this is advisory rather than a hard error.
+// funcPrefixWarning flags a likely tfstate_func_prefix typo: tfstate_values
+// is injected at one prefix, but the config's tfstate plugins all use
+// others, so those lookups silently read from a file instead of
+// tfstate_values. Returns "" when no tfstate plugin is declared (the
+// intended plugins-less mode) or when the injected prefix matches one.
+// Advisory, not fatal — a different-prefix plugin may be a deliberate
+// "read another tfstate from a file" setup.
 func funcPrefixWarning(plugins []ecspresso.ConfigPlugin, tfstateFuncPrefix string) string {
 	var declared []string
 	for _, p := range plugins {
@@ -178,17 +154,12 @@ func funcPrefixWarning(plugins []ecspresso.ConfigPlugin, tfstateFuncPrefix strin
 }
 
 // newApp constructs an ecspresso App with an in-memory tfstate plugin
-// instance pre-populated from tfstateOverrides. ecspresso.New then
-// skips the configured tfstate plugin's Setup (no on-disk tfstate
-// file read, no scanned state) and resolves every `tfstate(...)`
-// lookup — at the config level and inside task / service definitions
-// — from the override map only.
-//
-// The provider's design treats `tfstate_values` as the complete set
-// of tfstate-shaped inputs to ecspresso; resolving a missing key from
-// a possibly-stale tfstate file would let Terraform-unaware changes
-// leak into a deploy. With an in-memory backing, missing keys fail
-// fast with "is not found in tfstate" — the early signal we want.
+// pre-populated from tfstateOverrides. ecspresso.New skips the configured
+// tfstate plugin's Setup (no file / S3 read) and resolves every tfstate(...)
+// lookup — config-level and in task / service definitions — from the
+// overrides only. tfstate_values is the complete input by design: a missing
+// key fails fast with "is not found in tfstate" instead of silently falling
+// back to a possibly-stale file.
 func newApp(ctx context.Context, configPath, tfstateFuncPrefix string, overrides map[string]any) (*ecspresso.App, error) {
 	state := tfstate.Empty()
 	if len(overrides) > 0 {

@@ -203,14 +203,10 @@ func (r *serviceResource) Read(ctx context.Context, req resource.ReadRequest, re
 			return
 		}
 		if ecspressoapi.IsConfigLoadError(err) {
-			// The ecspresso config could not be rendered from the
-			// tfstate_values currently in state — typically because the
-			// config or tfstate_values was edited to reference a value
-			// that is not in state yet (e.g. a resource created in the
-			// same apply). Skip this refresh and keep the last-known
-			// state instead of failing the whole plan; the upcoming
-			// apply re-renders with the planned tfstate_values (and
-			// fails loudly there if the config is genuinely broken).
+			// Config can't render from the tfstate_values in state (they lag a
+			// pending config/values change). Skip the refresh and keep state
+			// instead of failing the plan; the apply re-renders with the
+			// planned values (and fails there if the config is truly broken).
 			resp.Diagnostics.AddWarning(
 				"ecspresso refresh skipped",
 				"Could not render the ecspresso config from the current tfstate_values, "+
@@ -357,17 +353,10 @@ func (r *serviceResource) Delete(ctx context.Context, req resource.DeleteRequest
 }
 
 // tfstateOverridesFromPlan decodes the tfstate_values attribute — a JSON
-// object string, typically produced by `jsonencode({...})` — into the
-// map[string]any that ecspresso resolves `tfstate(...)` lookups against.
-// Null / unknown yield nil.
-//
-// It is a JSON string rather than a typed object so that referencing a
-// whole resource object created in the same apply works: such objects
-// carry computed leaves that are null at plan but concrete at apply (e.g.
-// aws_subnet's outpost_arn ""), which on a structured attribute trips
-// Terraform's "inconsistent final plan". jsonencode collapses everything
-// into one string (unknown -> known across the apply), which Terraform
-// tolerates.
+// object string from `jsonencode({...})` — into the map[string]any that
+// ecspresso resolves `tfstate(...)` lookups against. It's a string (not a
+// typed object) to dodge "inconsistent final plan" on whole-object refs;
+// see the schema Description. Null / unknown yield nil.
 func tfstateOverridesFromPlan(m serviceResourceModel, diags *diag.Diagnostics) map[string]any {
 	if m.TFStateValues.IsNull() || m.TFStateValues.IsUnknown() {
 		return nil
