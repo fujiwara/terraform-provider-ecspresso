@@ -1,5 +1,8 @@
 # Changelog
 
+## [v0.0.6](https://github.com/fujiwara/terraform-provider-ecspresso/compare/v0.0.5...v0.0.6) - 2026-05-29
+- Make from-scratch plan→apply work with config-level tfstate by @fujiwara in https://github.com/fujiwara/terraform-provider-ecspresso/pull/23
+
 ## [v0.0.5](https://github.com/fujiwara/terraform-provider-ecspresso/compare/v0.0.4...v0.0.5) - 2026-05-29
 - Bump ecspresso to pre-v3 branch HEAD by @fujiwara in https://github.com/fujiwara/terraform-provider-ecspresso/pull/18
 - Inject tfstate via WithPluginInstance by @fujiwara in https://github.com/fujiwara/terraform-provider-ecspresso/pull/20
