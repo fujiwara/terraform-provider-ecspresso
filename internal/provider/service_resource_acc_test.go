@@ -61,9 +61,9 @@ provider "ecspresso" {}
 
 resource "ecspresso_service" "test" {
   config_path = %q
-  tfstate_values = {
+  tfstate_values = jsonencode({
 %s
-  }
+  })
 }
 `, cfgPath, tfstateValuesHCL),
 				Check: resource.ComposeTestCheckFunc(

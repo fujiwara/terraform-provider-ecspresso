@@ -22,10 +22,10 @@ resource "ecspresso_service" "app" {
 
   # Must list every `tfstate(...)` reference your ecspresso config uses;
   # missing keys fail the apply. A diff here triggers `ecspresso deploy`.
-  tfstate_values = {
+  tfstate_values = jsonencode({
     "aws_lb_target_group.app.arn" = aws_lb_target_group.app.arn
     "aws_iam_role.task.arn"       = aws_iam_role.task.arn
-  }
+  })
 }
 ```
 
@@ -38,7 +38,7 @@ Run `terraform apply`. Set AWS credentials and any `{{ env "FOO" }}` / `{{ must_
 | name | description |
 |------|-------------|
 | `config_path` *(required)* | Path to `ecspresso.yml`. Prefer `"${path.module}/..."`. Changing this forces replacement. |
-| `tfstate_values` | Object whose keys are tfstate addresses (`"aws_iam_role.task"`, `"output.foo"`, …) and whose values are passed to ecspresso's `tfstate(...)` lookups. A diff here is the redeploy trigger. |
+| `tfstate_values` | JSON object string (`jsonencode({...})`) mapping tfstate addresses (`"aws_iam_role.task"`, `"output.foo"`, …) to the values ecspresso's `tfstate(...)` lookups resolve against. A diff here is the redeploy trigger. |
 | `tfstate_func_prefix` | Matches a tfstate plugin's `func_prefix`. Default `""`. Only needed with multiple tfstate plugins. |
 | `destroy_action` | `delete` (default) or `ignore`. `ignore` removes the resource from Terraform state without touching AWS. |
 
@@ -75,11 +75,20 @@ Relative paths are resolved against the **working directory of the `terraform` p
 
 ### `tfstate_values` semantics
 
-Keys are tfstate addresses (e.g. `"aws_iam_role.task"`, `"output.foo"`), values can be any Terraform type. Nested paths like `tfstate('aws_iam_role.task.arn')` resolve through the same map.
+Keys are tfstate addresses (`"aws_iam_role.task"`, `"output.foo"`); values can be any type, and nested lookups like `tfstate('aws_iam_role.task.arn')` resolve through the map. `tfstate_values` is the **complete input**: the provider feeds ecspresso from it alone and never reads the tfstate plugin's on-disk / S3 file, so a missing key fails the apply with `is not found in tfstate`. (The same `ecspresso.yml` still works from the CLI, which reads the file normally.)
 
-**`tfstate_values` is the complete input set when running through this provider.** The provider hands ecspresso an in-memory tfstate backed by `tfstate_values` only — the on-disk / S3 tfstate of the *targeted* tfstate plugin is never read in provider mode. Missing keys fail the apply with `is not found in tfstate`. By design — scanned-state fallback would let Terraform-unaware changes leak into a deploy. The same `ecspresso.yml` still works from the CLI (which reads the on-disk / S3 tfstate normally because the CLI path doesn't inject anything).
+`tfstate_values` is a **JSON object string — always pass it with `jsonencode(...)`**:
 
-The provider injects into exactly one tfstate plugin, selected by `tfstate_func_prefix` (default `""`). If `ecspresso.yml` declares **multiple** tfstate plugins, only the one whose `func_prefix` matches is fed from `tfstate_values`; the others run normally and read their own source (e.g. a shared network tfstate from S3). If `tfstate_func_prefix` matches *no* declared tfstate plugin while others are declared, the apply emits a warning — those lookups would silently read from a file instead of `tfstate_values`, the usual sign of a mis-set prefix.
+```hcl
+tfstate_values = jsonencode({
+  "aws_ecs_cluster.main" = aws_ecs_cluster.main
+  "aws_subnet.public"    = aws_subnet.public
+})
+```
+
+It's a string rather than a typed object so that referencing a whole resource object created in the same apply works. Such objects carry computed attributes that are `null` at plan but concrete at apply (e.g. `aws_subnet`'s `outpost_arn` → `""`); a typed attribute tracks those per-leaf and trips Terraform's *"inconsistent final plan"* on a from-scratch build, whereas `jsonencode` collapses everything into one value that goes unknown → known across the apply. The provider `jsonencode`/decodes it transparently. (The only visible effect is that a diff shows as a JSON string.)
+
+With multiple tfstate plugins, `tfstate_func_prefix` selects the one fed from `tfstate_values`; the others read their own source.
 
 ### `last_apply_at` is a Terraform-side timestamp
 
