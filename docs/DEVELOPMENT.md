@@ -6,14 +6,18 @@ See [DESIGN.md](DESIGN.md) for the design rationale and the resource model.
 ## Status
 
 **Pre-release.** `Create` / `Read` / `Update` / `Delete` are wired to
-ecspresso v2 as a Go library. `tfstate_values` is fed into ecspresso's
-tfstate plugin via the override mechanism in
-[tfstate-lookup v1.12.0](https://github.com/fujiwara/tfstate-lookup/releases/tag/v1.12.0)
-and the plugin instance registry in ecspresso v2.8.4. The `optional: true`
-tfstate flag the first-apply path depends on is from a post-v2.8.4 commit
-on ecspresso's `v2` branch, currently pinned via Go pseudo-version. The
-release artifacts and `.goreleaser.yml` are aligned with the Terraform
-Registry publishing requirements; see [Releasing](#releasing) below.
+ecspresso as a Go library. `tfstate_values` is turned into an in-memory
+`*tfstate.TFState` (via [tfstate-lookup](https://github.com/fujiwara/tfstate-lookup)'s
+`Empty()` + `SetOverrides`) and handed to ecspresso through the
+`WithPluginInstance` AppOption ([kayac/ecspresso#1031](https://github.com/kayac/ecspresso/pull/1031)).
+The injected instance bypasses the tfstate plugin's Setup, so no on-disk
+/ S3 tfstate is read, a `plugins:` block is optional, and even
+config-level `tfstate(...)` fields resolve from `tfstate_values` — which
+is why the earlier `optional: true` first-apply workaround is no longer
+needed. `WithPluginInstance` lives on ecspresso's `pre-v3` branch,
+currently pinned via Go pseudo-version. The release artifacts and
+`.goreleaser.yml` are aligned with the Terraform Registry publishing
+requirements; see [Releasing](#releasing) below.
 
 ## Building locally (dev override)
 

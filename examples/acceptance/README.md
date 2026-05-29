@@ -21,8 +21,11 @@ run.
   prerequisites. State is stored in S3 so `ecspresso` running under CI
   can read it. Exports `cluster_name`, `task_execution_role_arn`,
   `subnet_ids`, `security_group_id`.
-- `ecspresso.jsonnet` — ecspresso config. Reads the bootstrap stack's
-  S3 tfstate via the `tfstate` plugin (URL passed in `TFSTATE_URL`).
+- `ecspresso.jsonnet` — ecspresso config. Has no `plugins:` block; the
+  provider injects an in-memory tfstate from `tfstate_values`, so
+  config-level `cluster` resolves via `tfstate('output.cluster_name')`.
+  (`TFSTATE_URL` is still read by the *test* to build `tfstate_values`
+  from the bootstrap stack, not by ecspresso.)
 - `taskdef.jsonnet` — Minimal Fargate task definition running one
   `public.ecr.aws/nginx/nginx:latest` container.
 - `service_def.jsonnet` — Service definition; `desiredCount: 0`, so
