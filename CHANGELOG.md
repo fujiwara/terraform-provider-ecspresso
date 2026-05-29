@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.0.5](https://github.com/fujiwara/terraform-provider-ecspresso/compare/v0.0.4...v0.0.5) - 2026-05-29
+- Bump ecspresso to pre-v3 branch HEAD by @fujiwara in https://github.com/fujiwara/terraform-provider-ecspresso/pull/18
+- Inject tfstate via WithPluginInstance by @fujiwara in https://github.com/fujiwara/terraform-provider-ecspresso/pull/20
+- Bump aws-actions/configure-aws-credentials to v6.1.1 by @fujiwara in https://github.com/fujiwara/terraform-provider-ecspresso/pull/21
+- Align docs with WithPluginInstance and warn on tfstate_func_prefix mismatch by @fujiwara in https://github.com/fujiwara/terraform-provider-ecspresso/pull/22
+
 ## [v0.0.4](https://github.com/fujiwara/terraform-provider-ecspresso/compare/v0.0.3...v0.0.4) - 2026-05-18
 - README: mark Status as Published on the Terraform Registry by @fujiwara in https://github.com/fujiwara/terraform-provider-ecspresso/pull/5
 - Generate Terraform Registry documentation by @fujiwara in https://github.com/fujiwara/terraform-provider-ecspresso/pull/6
