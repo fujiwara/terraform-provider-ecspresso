@@ -203,6 +203,26 @@ func (r *serviceResource) Read(ctx context.Context, req resource.ReadRequest, re
 			resp.State.RemoveResource(ctx)
 			return
 		}
+		if ecspressoapi.IsConfigLoadError(err) {
+			// The ecspresso config could not be rendered from the
+			// tfstate_values currently in state — typically because the
+			// config or tfstate_values was edited to reference a value
+			// that is not in state yet (e.g. a resource created in the
+			// same apply). Skip this refresh and keep the last-known
+			// state instead of failing the whole plan; the upcoming
+			// apply re-renders with the planned tfstate_values (and
+			// fails loudly there if the config is genuinely broken).
+			resp.Diagnostics.AddWarning(
+				"ecspresso refresh skipped",
+				"Could not render the ecspresso config from the current tfstate_values, "+
+					"so this refresh was skipped and the last-known state is kept. This is "+
+					"expected when the config or tfstate_values references a value that does "+
+					"not exist yet (created in the same apply) or was just edited; the next "+
+					"apply re-renders with the planned tfstate_values.\n\nDetails: "+err.Error(),
+			)
+			resp.State.Raw = req.State.Raw
+			return
+		}
 		resp.Diagnostics.AddError("ecspresso describe failed", err.Error())
 		return
 	}

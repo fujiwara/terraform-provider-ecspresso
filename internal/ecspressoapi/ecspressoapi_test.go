@@ -1,11 +1,40 @@
 package ecspressoapi
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	ecspresso "github.com/kayac/ecspresso/v2"
 )
+
+func TestIsConfigLoadError(t *testing.T) {
+	base := errors.New("failed to evaluate jsonnet: foo is not found in tfstate")
+
+	if IsConfigLoadError(base) {
+		t.Errorf("a plain error must not be classified as a config load error")
+	}
+	if IsConfigLoadError(nil) {
+		t.Errorf("nil must not be classified as a config load error")
+	}
+
+	cle := &ConfigLoadError{err: base}
+	if !IsConfigLoadError(cle) {
+		t.Errorf("ConfigLoadError must be recognised")
+	}
+	// Preserves the wrapped message and unwraps for errors.Is/As.
+	if cle.Error() != base.Error() {
+		t.Errorf("Error() should surface the wrapped message, got %q", cle.Error())
+	}
+	if !errors.Is(cle, base) {
+		t.Errorf("errors.Is should reach the wrapped error")
+	}
+	// Survives further wrapping with %w.
+	if !IsConfigLoadError(fmt.Errorf("describe failed: %w", cle)) {
+		t.Errorf("IsConfigLoadError must see through additional %%w wrapping")
+	}
+}
 
 func TestFuncPrefixWarning(t *testing.T) {
 	tfstate := func(prefix string) ecspresso.ConfigPlugin {

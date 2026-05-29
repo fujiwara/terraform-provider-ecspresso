@@ -113,6 +113,28 @@ func IsNotFound(err error) bool {
 	return errors.Is(err, ecspresso.ErrNotFound)
 }
 
+// ConfigLoadError wraps a failure to construct the ecspresso App, i.e.
+// loading and rendering the config file — including resolving every
+// config-level tfstate(...) lookup from tfstate_values. It is kept
+// distinct from an AWS API error returned later (by DescribeService /
+// Deploy) so that Read can treat an unrenderable config as a skippable
+// refresh rather than a hard plan failure. This matters when the
+// committed tfstate_values are stale relative to a pending config /
+// tfstate_values change — e.g. a config-level tfstate(...) reference to
+// a resource that does not exist in state yet because it is created in
+// the same apply.
+type ConfigLoadError struct{ err error }
+
+func (e *ConfigLoadError) Error() string { return e.err.Error() }
+func (e *ConfigLoadError) Unwrap() error { return e.err }
+
+// IsConfigLoadError reports whether err originated from loading /
+// rendering the ecspresso config (newApp), as opposed to an AWS API call.
+func IsConfigLoadError(err error) bool {
+	var c *ConfigLoadError
+	return errors.As(err, &c)
+}
+
 // funcPrefixWarning detects the silent footgun where tfstate_values is
 // injected at one func_prefix but the ecspresso config's tfstate
 // plugins use different ones. The provider injects a single in-memory
@@ -175,9 +197,15 @@ func newApp(ctx context.Context, configPath, tfstateFuncPrefix string, overrides
 	cliOpts := &ecspresso.CLIOptions{
 		ConfigFilePath: configPath,
 	}
-	return ecspresso.New(ctx, cliOpts,
+	app, err := ecspresso.New(ctx, cliOpts,
 		ecspresso.WithPluginInstance("tfstate", tfstateFuncPrefix, state),
 	)
+	if err != nil {
+		// Wrap so Read can distinguish a config load/render failure (which
+		// it can safely skip during refresh) from an AWS API error.
+		return nil, &ConfigLoadError{err: err}
+	}
+	return app, nil
 }
 
 func describe(ctx context.Context, app *ecspresso.App) (*ServiceInfo, error) {
