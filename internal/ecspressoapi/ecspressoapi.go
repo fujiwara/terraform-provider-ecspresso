@@ -7,6 +7,7 @@ package ecspressoapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -32,17 +33,24 @@ type ServiceInfo struct {
 // ecspresso.App.HasDiff returned no diff. tfstateOverrides drive
 // every `tfstate(...)` lookup in the config (including config-level
 // fields like `cluster`) — see newApp.
-func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) (info *ServiceInfo, deployed bool, err error) {
+//
+// warnings carries non-fatal advisories the caller should surface to
+// the user — currently a tfstate_func_prefix / config mismatch (see
+// funcPrefixWarning).
+func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tfstateOverrides map[string]any) (info *ServiceInfo, deployed bool, warnings []string, err error) {
 	app, err := newApp(ctx, configPath, tfstateFuncPrefix, tfstateOverrides)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
+	}
+	if w := funcPrefixWarning(app.Config().Plugins, tfstateFuncPrefix); w != "" {
+		warnings = append(warnings, w)
 	}
 
 	hasDiff, err := app.HasDiff(ctx, ecspresso.DiffOption{
 		WithService: true,
 	})
 	if err != nil {
-		return nil, false, err
+		return nil, false, warnings, err
 	}
 	if !hasDiff {
 		// No-op against AWS: the rendered configs already match the
@@ -50,7 +58,7 @@ func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tf
 		// caller can update computed attributes without claiming a
 		// new deploy happened.
 		info, err = describe(ctx, app)
-		return info, false, err
+		return info, false, warnings, err
 	}
 
 	if err := app.Deploy(ctx, ecspresso.DeployOption{
@@ -65,10 +73,10 @@ func Deploy(ctx context.Context, configPath string, tfstateFuncPrefix string, tf
 		// request with "DesiredCount is missing".
 		DesiredCount: aws.Int32(ecspresso.DefaultDesiredCount),
 	}); err != nil {
-		return nil, false, err
+		return nil, false, warnings, err
 	}
 	info, err = describe(ctx, app)
-	return info, true, err
+	return info, true, warnings, err
 }
 
 // Describe returns the current service info without deploying.
@@ -103,6 +111,48 @@ func Delete(ctx context.Context, configPath string, tfstateFuncPrefix string, tf
 // Used by Read to decide whether to remove the resource from Terraform state.
 func IsNotFound(err error) bool {
 	return errors.Is(err, ecspresso.ErrNotFound)
+}
+
+// funcPrefixWarning detects the silent footgun where tfstate_values is
+// injected at one func_prefix but the ecspresso config's tfstate
+// plugins use different ones. The provider injects a single in-memory
+// tfstate instance keyed by tfstateFuncPrefix; that prefix's
+// `tfstate(...)` lookups resolve from tfstate_values while every other
+// declared tfstate plugin reads its own on-disk / S3 state during
+// Setup. If the injected prefix matches no declared plugin, the
+// values the user passed silently never reach the lookups they
+// expected — instead those lookups read from a (possibly stale) file,
+// which is exactly the Terraform-unaware leak the provider's design
+// avoids.
+//
+// It returns "" (no warning) when the config declares no tfstate
+// plugin at all — that is the intended plugins-less mode enabled by
+// kayac/ecspresso#1031, where the injected instance is the only
+// source. It only warns when tfstate plugins ARE declared yet none
+// matches the injected prefix, since that is the classic
+// tfstate_func_prefix typo. Because a declared plugin for a different
+// prefix may be a deliberate "read this other tfstate from a file"
+// setup, this is advisory rather than a hard error.
+func funcPrefixWarning(plugins []ecspresso.ConfigPlugin, tfstateFuncPrefix string) string {
+	var declared []string
+	for _, p := range plugins {
+		if p.Name != "tfstate" {
+			continue
+		}
+		if p.FuncPrefix == tfstateFuncPrefix {
+			return "" // the injected prefix lines up with a declared plugin
+		}
+		declared = append(declared, fmt.Sprintf("%q", p.FuncPrefix))
+	}
+	if len(declared) == 0 {
+		return "" // plugins-less mode: nothing to mismatch against
+	}
+	return fmt.Sprintf(
+		"tfstate_values is injected at tfstate_func_prefix=%q, but the ecspresso config declares tfstate plugin(s) with func_prefix %s and none matches. "+
+			"Lookups at those prefixes are read from the plugin's on-disk/S3 tfstate, not from tfstate_values. "+
+			"If you meant to feed one of them, set tfstate_func_prefix to its func_prefix; if the func_prefix=%q lookups are supplied only by tfstate_values, you can ignore this.",
+		tfstateFuncPrefix, strings.Join(declared, ", "), tfstateFuncPrefix,
+	)
 }
 
 // newApp constructs an ecspresso App with an in-memory tfstate plugin

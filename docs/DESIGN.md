@@ -242,7 +242,8 @@ plugins:
 ecspresso では tfstate plugin を複数並べて `func_prefix` で区別できる(別 tfstate を別関数名で引く)。provider 側はこれに合わせて `tfstate_func_prefix` を持つ:
 
 - 大半のケース(tfstate plugin が 1 個、`func_prefix` 無し)では指定不要。default `""` で素の `tfstate(...)` 関数に注入される
-- 複数 plugin がある場合だけ `tfstate_func_prefix = "shared_"` のように対象を選ぶ
+- 複数 plugin がある場合だけ `tfstate_func_prefix = "shared_"` のように対象を選ぶ。注入対象**以外**の tfstate plugin は従来どおり自身の Setup が走り、自分の url/path を読む(「別 tfstate はファイルから」が成立)
+- ただし `tfstate_func_prefix` が config 上のどの tfstate plugin の `func_prefix` とも一致しないと、`tfstate_values` がどの lookup にも効かず、その lookup は無言でファイルを読む(prefix の指定ミスの典型)。これを検知して apply 時に warning を出す(`funcPrefixWarning`)。tfstate plugin が 1 個も宣言されていない「plugins ブロック省略」モードは正常系なので警告しない
 
 #### terraform 側の使用例
 
