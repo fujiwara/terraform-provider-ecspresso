@@ -17,10 +17,10 @@ resource "ecspresso_service" "app" {
   config_path = "${path.module}/ecspresso.yml"
 
   # A diff in any of these values causes Terraform to re-run `ecspresso deploy`.
-  tfstate_values = {
+  tfstate_values = jsonencode({
     "aws_lb_target_group.app.arn" = aws_lb_target_group.app.arn
     "aws_iam_role.task.arn"       = aws_iam_role.task.arn
-  }
+  })
 }
 ```
 
@@ -35,7 +35,7 @@ resource "ecspresso_service" "app" {
 
 - `destroy_action` (String) Action taken on destroy. `delete` (default) scales the service to 0, drains tasks, then deletes the service. `ignore` leaves the service untouched in AWS and only removes it from Terraform state.
 - `tfstate_func_prefix` (String) Identifies which tfstate plugin in `ecspresso.yml` receives the `tfstate_values` overrides. Matches the plugin's `func_prefix` field; defaults to the empty string, which targets the default (no-prefix) tfstate plugin. Only needed when the ecspresso config declares multiple tfstate plugins and the Terraform-managed half is not the default one.
-- `tfstate_values` (Dynamic) Object whose keys are tfstate addresses at the resource level (e.g. `"aws_iam_role.task"`, `"output.foo"`). Each value may be any Terraform type — a whole resource attribute map, a list, a bool, or a scalar — and the corresponding ecspresso jsonnet/template lookups, including nested ones like `tfstate('aws_iam_role.task.arn')`, are resolved against it. Overrides take precedence over the tfstate file the plugin loads from `path` / `url`. A diff in this attribute is the primary signal that causes Terraform to re-run an ecspresso deploy. Declared as a Dynamic attribute (not a typed map) because Plugin Framework does not support Dynamic element types inside collections.
+- `tfstate_values` (String) A JSON object — pass it with `jsonencode({...})` — mapping tfstate addresses (`"aws_iam_role.task"`, `"output.foo"`) to values that ecspresso's `tfstate(...)` lookups resolve against, including nested lookups like `tfstate('aws_iam_role.task.arn')`. These take precedence over the tfstate file the plugin would load from `path` / `url`. A diff here is the primary signal that triggers an `ecspresso deploy`. It is a JSON string (not a typed object) so that referencing whole resource objects created in the same apply does not trip Terraform's "inconsistent final plan".
 
 ### Read-Only
 

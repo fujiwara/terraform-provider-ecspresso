@@ -2,11 +2,11 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -41,17 +41,17 @@ func NewServiceResource() resource.Resource {
 // ecspresso_service resource. Field tags must match the schema attribute
 // names exactly.
 type serviceResourceModel struct {
-	ID                types.String  `tfsdk:"id"`
-	ConfigPath        types.String  `tfsdk:"config_path"`
-	TFStateValues     types.Dynamic `tfsdk:"tfstate_values"`
-	TFStateFuncPrefix types.String  `tfsdk:"tfstate_func_prefix"`
-	DestroyAction     types.String  `tfsdk:"destroy_action"`
-	ServiceArn        types.String  `tfsdk:"service_arn"`
-	ServiceName       types.String  `tfsdk:"service_name"`
-	ClusterArn        types.String  `tfsdk:"cluster_arn"`
-	ClusterName       types.String  `tfsdk:"cluster_name"`
-	LastApplyAt       types.String  `tfsdk:"last_apply_at"`
-	EcspressoVersion  types.String  `tfsdk:"ecspresso_version"`
+	ID                types.String `tfsdk:"id"`
+	ConfigPath        types.String `tfsdk:"config_path"`
+	TFStateValues     types.String `tfsdk:"tfstate_values"`
+	TFStateFuncPrefix types.String `tfsdk:"tfstate_func_prefix"`
+	DestroyAction     types.String `tfsdk:"destroy_action"`
+	ServiceArn        types.String `tfsdk:"service_arn"`
+	ServiceName       types.String `tfsdk:"service_name"`
+	ClusterArn        types.String `tfsdk:"cluster_arn"`
+	ClusterName       types.String `tfsdk:"cluster_name"`
+	LastApplyAt       types.String `tfsdk:"last_apply_at"`
+	EcspressoVersion  types.String `tfsdk:"ecspresso_version"`
 }
 
 func (r *serviceResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -76,8 +76,8 @@ func (r *serviceResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"tfstate_values": schema.DynamicAttribute{
-				Description: "Object whose keys are tfstate addresses at the resource level (e.g. `\"aws_iam_role.task\"`, `\"output.foo\"`). Each value may be any Terraform type — a whole resource attribute map, a list, a bool, or a scalar — and the corresponding ecspresso jsonnet/template lookups, including nested ones like `tfstate('aws_iam_role.task.arn')`, are resolved against it. Overrides take precedence over the tfstate file the plugin loads from `path` / `url`. A diff in this attribute is the primary signal that causes Terraform to re-run an ecspresso deploy. Declared as a Dynamic attribute (not a typed map) because Plugin Framework does not support Dynamic element types inside collections.",
+			"tfstate_values": schema.StringAttribute{
+				Description: "A JSON object — pass it with `jsonencode({...})` — mapping tfstate addresses (`\"aws_iam_role.task\"`, `\"output.foo\"`) to values that ecspresso's `tfstate(...)` lookups resolve against, including nested lookups like `tfstate('aws_iam_role.task.arn')`. These take precedence over the tfstate file the plugin would load from `path` / `url`. A diff here is the primary signal that triggers an `ecspresso deploy`. It is a JSON string (not a typed object) so that referencing whole resource objects created in the same apply does not trip Terraform's \"inconsistent final plan\".",
 				Optional:    true,
 			},
 			"tfstate_func_prefix": schema.StringAttribute{
@@ -155,7 +155,7 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	tfstateOverrides := tfstateOverridesFromPlan(ctx, plan, &resp.Diagnostics)
+	tfstateOverrides := tfstateOverridesFromPlan(plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -168,10 +168,9 @@ func (r *serviceResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	// Carry the planned raw value (sensitivity markers and all) straight into
-	// state, then overwrite only the computed attributes. Round-tripping
-	// through serviceResourceModel for a Dynamic attribute drops nested
-	// sensitivity marks, which trips Terraform's "inconsistent values for
-	// sensitive attribute" check at apply time.
+	// state, then overwrite only the computed attributes. Round-tripping the
+	// model would drop marks (e.g. a sensitive tfstate_values), tripping
+	// Terraform's "inconsistent values for sensitive attribute" check.
 	resp.State.Raw = req.Plan.Raw
 	resp.Diagnostics.Append(setComputedFromInfo(ctx, &resp.State, info)...)
 	// last_apply_at reflects "the apply that actually ran a deploy".
@@ -193,7 +192,7 @@ func (r *serviceResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	tfstateOverrides := tfstateOverridesFromPlan(ctx, state, &resp.Diagnostics)
+	tfstateOverrides := tfstateOverridesFromPlan(state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -254,7 +253,7 @@ func (r *serviceResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	tfstateOverrides := tfstateOverridesFromPlan(ctx, plan, &resp.Diagnostics)
+	tfstateOverrides := tfstateOverridesFromPlan(plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -346,7 +345,7 @@ func (r *serviceResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	tfstateOverrides := tfstateOverridesFromPlan(ctx, state, &resp.Diagnostics)
+	tfstateOverrides := tfstateOverridesFromPlan(state, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -357,109 +356,31 @@ func (r *serviceResource) Delete(ctx context.Context, req resource.DeleteRequest
 	}
 }
 
-// tfstateOverridesFromPlan extracts the tfstate_values attribute as a
-// native map[string]any suitable for ecspresso.App.SetTFStateOverrides.
-// The attribute is declared as a Dynamic and the underlying value is
-// expected to be an Object literal in HCL; a typed Map is also accepted
-// for symmetry. Null / unknown yield nil.
-func tfstateOverridesFromPlan(_ context.Context, m serviceResourceModel, diags *diag.Diagnostics) map[string]any {
+// tfstateOverridesFromPlan decodes the tfstate_values attribute — a JSON
+// object string, typically produced by `jsonencode({...})` — into the
+// map[string]any that ecspresso resolves `tfstate(...)` lookups against.
+// Null / unknown yield nil.
+//
+// It is a JSON string rather than a typed object so that referencing a
+// whole resource object created in the same apply works: such objects
+// carry computed leaves that are null at plan but concrete at apply (e.g.
+// aws_subnet's outpost_arn ""), which on a structured attribute trips
+// Terraform's "inconsistent final plan". jsonencode collapses everything
+// into one string (unknown -> known across the apply), which Terraform
+// tolerates.
+func tfstateOverridesFromPlan(m serviceResourceModel, diags *diag.Diagnostics) map[string]any {
 	if m.TFStateValues.IsNull() || m.TFStateValues.IsUnknown() {
 		return nil
 	}
-	underlying := m.TFStateValues.UnderlyingValue()
-	var elems map[string]attr.Value
-	switch u := underlying.(type) {
-	case types.Object:
-		elems = u.Attributes()
-	case types.Map:
-		elems = u.Elements()
-	default:
+	var out map[string]any
+	if err := json.Unmarshal([]byte(m.TFStateValues.ValueString()), &out); err != nil {
 		diags.AddError(
-			"unsupported tfstate_values shape",
-			fmt.Sprintf("tfstate_values must be an object or map, got %T", underlying),
+			"invalid tfstate_values JSON",
+			fmt.Sprintf("tfstate_values must be a JSON object (use jsonencode of an object): %s", err),
 		)
 		return nil
 	}
-	out := make(map[string]any, len(elems))
-	for k, v := range elems {
-		goVal, err := attrValueToGo(v)
-		if err != nil {
-			diags.AddError(
-				"failed to extract tfstate_values element",
-				fmt.Sprintf("tfstate_values[%q]: %s", k, err),
-			)
-			continue
-		}
-		out[k] = goVal
-	}
 	return out
-}
-
-// attrValueToGo materializes an attr.Value as a generic Go value suitable
-// for ecspresso.App.SetTFStateOverrides (i.e. the same shape json.Unmarshal
-// into any would produce). Null becomes Go nil. Unknown values are rejected
-// — callers should not reach this path with unknown plan values.
-func attrValueToGo(v attr.Value) (any, error) {
-	if v.IsNull() {
-		return nil, nil
-	}
-	if v.IsUnknown() {
-		return nil, fmt.Errorf("value is unknown at apply time")
-	}
-	switch c := v.(type) {
-	case types.String:
-		return c.ValueString(), nil
-	case types.Bool:
-		return c.ValueBool(), nil
-	case types.Int64:
-		return c.ValueInt64(), nil
-	case types.Float64:
-		return c.ValueFloat64(), nil
-	case types.Number:
-		// gojq (used downstream by tfstate-lookup) expects float64 for
-		// numeric values. Precision loss is possible for very large
-		// integers; tfstate addresses in practice are not numeric so
-		// this is acceptable.
-		f, _ := c.ValueBigFloat().Float64()
-		return f, nil
-	case types.List:
-		return attrValueSlice(c.Elements())
-	case types.Set:
-		return attrValueSlice(c.Elements())
-	case types.Tuple:
-		return attrValueSlice(c.Elements())
-	case types.Map:
-		return attrValueMap(c.Elements())
-	case types.Object:
-		return attrValueMap(c.Attributes())
-	case types.Dynamic:
-		return attrValueToGo(c.UnderlyingValue())
-	}
-	return nil, fmt.Errorf("unsupported attr.Value type %T", v)
-}
-
-func attrValueSlice(elems []attr.Value) ([]any, error) {
-	out := make([]any, len(elems))
-	for i, e := range elems {
-		sub, err := attrValueToGo(e)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = sub
-	}
-	return out, nil
-}
-
-func attrValueMap(elems map[string]attr.Value) (map[string]any, error) {
-	out := make(map[string]any, len(elems))
-	for k, e := range elems {
-		sub, err := attrValueToGo(e)
-		if err != nil {
-			return nil, err
-		}
-		out[k] = sub
-	}
-	return out, nil
 }
 
 // setComputedFromInfo writes the Computed attributes that mirror AWS-
